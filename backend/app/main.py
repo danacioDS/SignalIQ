@@ -5,6 +5,13 @@ from flask_cors import CORS
 import google.generativeai as genai
 import yfinance as yf
 from datetime import datetime
+import os
+import sys
+
+# Agregar el directorio actual al path para poder importar módulos locales
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Importar módulos locales usando importación absoluta
 from asset_classifier import classifier
 
 app = Flask(__name__)
@@ -17,7 +24,7 @@ API_KEYS = [
     {'key': 'GEMINI_API_KEY_REDACTED', 'name': 'SignalIQ_03'},
 ]
 
-MODEL_NAME = 'gemini-2.5-flash'
+MODEL_NAME = 'gemini-2.0-flash'
 current_key_index = 0
 model = None
 
@@ -44,7 +51,6 @@ def get_available_key():
 get_available_key()
 
 def calculate_ndi(ticker):
-    """Calcula NDI basado en datos reales de Yahoo Finance"""
     try:
         stock = yf.Ticker(ticker)
         hist = stock.history(period="5d")
@@ -54,20 +60,16 @@ def calculate_ndi(ticker):
         prev = hist['Close'].iloc[0]
         change = (current - prev) / prev
         if change > 0.02:
-            return 0.3  # BUY signal
+            return 0.3
         elif change < -0.02:
-            return 0.7  # SELL signal
-        return 0.5  # HOLD
+            return 0.7
+        return 0.5
     except:
         return 0.5
 
 def get_prompt(asset_info, ticker, ndi):
-    """Genera prompt según tipo de activo detectado automáticamente"""
     asset_type = asset_info.get('type', 'unknown')
     name = asset_info.get('name', ticker)
-    method = asset_info.get('method', 'unknown')
-    
-    print(f"   Clasificado como: {asset_type} (método: {method})")
     
     prompts = {
         'stock': f"""You are a stock analyst. Analyze {ticker} ({name}):
@@ -76,7 +78,7 @@ NDI Score: {ndi} (>0.7=SELL, <0.3=BUY)
 
 Provide:
 1. NDI interpretation
-2. Market sentiment (sector: {asset_info.get('sector', 'general')})
+2. Market sentiment
 3. Recommendation (BUY/SELL/HOLD)
 4. Key risks
 
@@ -90,9 +92,7 @@ Provide:
 1. NDI interpretation
 2. Crypto market sentiment
 3. Recommendation (BUY/SELL/HOLD)
-4. Key risks (volatility, regulation)
-
-Be professional and concise.""",
+4. Key risks (volatility, regulation)""",
         
         'forex': f"""You are a forex analyst. Analyze {ticker} ({name}):
 
@@ -102,21 +102,7 @@ Provide:
 1. NDI interpretation for this currency
 2. Macroeconomic sentiment
 3. Recommendation (BUY/SELL/HOLD)
-4. Key risks (central banks, geopolitics)
-
-Be professional and concise.""",
-        
-        'etf': f"""You are an ETF analyst. Analyze {ticker} ({name}):
-
-NDI Score: {ndi} (>0.7=SELL, <0.3=BUY)
-
-Provide:
-1. NDI interpretation
-2. Market sentiment for this ETF
-3. Recommendation (BUY/SELL/HOLD)
-4. Key risks
-
-Be professional and concise.""",
+4. Key risks (central banks, geopolitics)""",
         
         'unknown': f"""Analyze {ticker}:
 
@@ -147,12 +133,12 @@ def analyze(ticker):
     try:
         ticker = ticker.upper()
         
-        # CLASIFICACIÓN AUTOMÁTICA (sin hardcode)
+        # CLASIFICACIÓN AUTOMÁTICA
         asset_info = classifier.classify(ticker)
         asset_type = asset_info.get('type', 'unknown')
         asset_name = asset_info.get('name', ticker)
         
-        print(f"📊 Analizando {ticker}...")
+        print(f"📊 Analizando {ticker}... (Tipo: {asset_type})")
         
         ndi = calculate_ndi(ticker)
         prompt = get_prompt(asset_info, ticker, ndi)
@@ -173,7 +159,6 @@ def analyze(ticker):
                 'ticker': ticker,
                 'asset_type': asset_type,
                 'asset_name': asset_name,
-                'classification_method': asset_info.get('method', 'unknown'),
                 'recommendation': rec,
                 'confidence': 0.90,
                 'signal_strength': "STRONG" if ndi > 0.7 else "MODERATE",
@@ -197,10 +182,8 @@ def root():
     return jsonify({'message': 'SignalIQ API', 'endpoints': ['/health', '/analyze/<ticker>']})
 
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
     print("=" * 60)
     print("🚀 SignalIQ API - Clasificación Automática")
     print("=" * 60)
-    print("📊 Usa Yahoo Finance para detectar: Stocks, Crypto, Forex, ETFs")
-    print("📍 Sin hardcode - 100% automático")
-    print("=" * 60)
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)
