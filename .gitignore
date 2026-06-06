@@ -1,0 +1,28 @@
+# Secrets
+.env
+*.key
+*_key.py
+api_*.py
+*llm_simple.py
+*secret*.py
+*_backup*.py
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Legacy
+legacy/
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+*.tar.gz
