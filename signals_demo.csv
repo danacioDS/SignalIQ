@@ -1,0 +1,4 @@
+ticker,date,ndi,ndi_delta,ndi_trend,regime,signal_state,confidence,price_modifier,persistence_days,risk_level,attention
+AAPL,2026-01-20,1.257116968158964,2.535953022232764,ACCELERATING,ALIGNED,INACTIVE,HIGH,trend_collapsing,0,NORMAL,No divergence signal detected.
+MSFT,2026-01-20,1.3420096282416916,2.111470092815483,ACCELERATING,ALIGNED,INACTIVE,HIGH,trend_collapsing,0,NORMAL,No divergence signal detected.
+NVDA,2026-01-20,-1.289067808679201,-0.36011948231786506,DECELERATING,ALIGNED,INACTIVE,HIGH,trend_supporting,0,NORMAL,No divergence signal detected.

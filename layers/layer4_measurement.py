@@ -1,0 +1,99 @@
+"""Sublayer 4A: Measurement — validity gate, NDI, and 5-day return."""
+
+VALIDITY_STATE = ["VALID", "INVALID_INPUT", "INSUFFICIENT_PRICE_HISTORY"]
+
+
+def validate_input(sentiment_zscore, momentum_zscore, price_history):
+    """Check that all inputs are present and sufficient for measurement.
+
+    Returns
+    -------
+    tuple[str, str | None]
+        (state, reason) where state is one of VALIDITY_STATE and reason
+        is a human-readable description when state is not VALID.
+    """
+    if sentiment_zscore is None:
+        return ("INVALID_INPUT", "sentiment is None")
+    if momentum_zscore is None:
+        return ("INVALID_INPUT", "momentum is None")
+    if len(price_history) < 6:
+        return (
+            "INSUFFICIENT_PRICE_HISTORY",
+            f"need 6 prices, got {len(price_history)}",
+        )
+    return ("VALID", None)
+
+
+def calculate_ndi(sentiment_zscore, momentum_zscore):
+    """Net Divergence Index = sentiment_zscore - momentum_zscore.
+
+    Returns None when either input is None.
+    """
+    if sentiment_zscore is None or momentum_zscore is None:
+        return None
+    return sentiment_zscore - momentum_zscore
+
+
+def calculate_5d_return(price_history):
+    """5-day trailing return from the closing-price list.
+
+    ``price_history[-1]`` is today's close; ``price_history[-6]`` is the
+    close from 5 trading days ago.  Returns None when fewer than 6 prices
+    are available.
+    """
+    if len(price_history) < 6:
+        return None
+    return (price_history[-1] / price_history[-6]) - 1
+
+
+def compute_measurements(sentiment_zscore, momentum_zscore, price_history):
+    """Run the full Sublayer 4A measurement pipeline.
+
+    Parameters
+    ----------
+    sentiment_zscore : float or None
+    momentum_zscore : float or None
+    price_history : list[float]
+        Closing prices with today as the last element.
+
+    Returns
+    -------
+    dict
+        Keys: validity_state, validity_reason, ndi, return_5d.
+    """
+    state, reason = validate_input(sentiment_zscore, momentum_zscore, price_history)
+
+    if state != "VALID":
+        return {
+            "validity_state": state,
+            "validity_reason": reason,
+            "ndi": None,
+            "return_5d": None,
+        }
+
+    return {
+        "validity_state": "VALID",
+        "validity_reason": None,
+        "ndi": calculate_ndi(sentiment_zscore, momentum_zscore),
+        "return_5d": calculate_5d_return(price_history),
+    }
+
+
+if __name__ == "__main__":
+    # --- Example usage ---
+    prices = [100.0, 102.0, 101.5, 103.0, 104.5, 106.0]
+
+    result = compute_measurements(0.8, 0.3, prices)
+    print("VALID case:", result)
+
+    result = compute_measurements(None, 0.3, prices)
+    print("None sentiment:", result)
+
+    result = compute_measurements(0.8, None, prices)
+    print("None momentum:", result)
+
+    result = compute_measurements(0.8, 0.3, [100.0, 101.0])
+    print("Short history:", result)
+
+    print("\nNDI:", calculate_ndi(1.5, 0.7))
+    print("5d return:", calculate_5d_return(prices))

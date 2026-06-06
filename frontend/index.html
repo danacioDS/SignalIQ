@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>SignalIQ - AI Financial Analysis</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            background: #28a745;
+            color: white;
+        }
+        input, button {
+            padding: 12px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+            border: none;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        .buy { color: #28a745; font-weight: bold; }
+        .sell { color: #dc3545; font-weight: bold; }
+        .hold { color: #ffc107; font-weight: bold; }
+        pre {
+            white-space: pre-wrap;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        .loading {
+            color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 SignalIQ <span class="status">Gemini AI</span></h1>
+        <p>Real-time financial analysis powered by Google Gemini AI</p>
+        
+        <div>
+            <input type="text" id="ticker" placeholder="Enter ticker (NVDA, AAPL, MSFT)" value="NVDA">
+            <button onclick="analyze()">Analyze</button>
+        </div>
+        
+        <div id="result" class="result">
+            <p>Enter a ticker and click Analyze</p>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = 'http://localhost:5000';
+        
+        async function analyze() {
+            const ticker = document.getElementById('ticker').value.toUpperCase();
+            const resultDiv = document.getElementById('result');
+            
+            resultDiv.innerHTML = '<p class="loading">🔄 Fetching data from Yahoo Finance...<br>🤖 Analyzing with Gemini AI...</p>';
+            
+            try {
+                const response = await fetch(`${API_URL}/analyze/${ticker}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const a = data.analysis;
+                    const recClass = a.recommendation.toLowerCase();
+                    
+                    resultDiv.innerHTML = `
+                        <h2>Analysis for ${a.ticker}</h2>
+                        <p><strong>NDI Score:</strong> ${a.ndi_used || 'Calculated'}</p>
+                        <p><strong>Recommendation:</strong> <span class="${recClass}">${a.recommendation}</span></p>
+                        <p><strong>Confidence:</strong> ${(a.confidence * 100).toFixed(0)}%</p>
+                        <p><strong>Signal Strength:</strong> ${a.signal_strength}</p>
+                        <hr>
+                        <h3>Gemini AI Analysis:</h3>
+                        <pre>${a.full_analysis}</pre>
+                        <hr>
+                        <small>Source: Gemini AI | ${a.timestamp || new Date().toLocaleString()}</small>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<p class="error">Error: ${data.error}</p>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">Connection error: ${error.message}<br><br>Make sure the API is running:<br><code>python3 api_final_working.py</code></p>`;
+            }
+        }
+    </script>
+</body>
+</html>
