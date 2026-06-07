@@ -224,3 +224,5 @@ def get_api_signals():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# FORCE_DEPLOY_API_ENDPOINTS
