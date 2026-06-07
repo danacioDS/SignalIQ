@@ -124,3 +124,4 @@ class AssetClassifier:
 
 # Instancia global
 classifier = AssetClassifier()
+classifier = AssetClassifier()
