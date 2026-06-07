@@ -193,16 +193,30 @@ def classify():
 # DATABASE
 # ============================================================
 
-def get_db():
 
+#####
+
+def get_db():
     db_url = os.environ.get("DATABASE_URL")
 
     if not db_url:
         raise Exception("DATABASE_URL missing")
 
-    return psycopg2.connect(db_url)
+    # Render sometimes uses postgres:// instead of postgresql://
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-@app.route("/api/stats")
+    try:
+        return psycopg2.connect(
+            db_url,
+            sslmode="require"
+        )
+    except Exception as e:
+        print("❌ DB CONNECTION ERROR:", str(e))
+        raise
+
+#####
+
 def stats():
 
     try:
