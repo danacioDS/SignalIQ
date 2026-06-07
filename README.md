@@ -1,5 +1,7 @@
 # SignalIQ
 
+postgresql://signaliq_user:7QwQbmPXrNJBdXdy0hwuu4es0hzSS0rw@dpg-d8io1osm0tmc73bqfosg-a/signaliq_db
+
 > Where market narratives meet market reality.
 
 SignalIQ is a market intelligence framework that measures the distance between what the market is *saying* (news sentiment) and what the market is *actually doing* (price momentum). It quantifies this gap using the **Narrative Divergence Index (NDI)**:
