@@ -1,277 +1,295 @@
-"""SignalIQ API - Con SignalIQ Score Integrado"""
+"""SignalIQ API"""
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from datetime import datetime
 import os
+import psycopg2
 import google.generativeai as genai
+
 from app.scoring.signal_score import SignalIQScore
 from app.classification.event_classifier import EventClassifier
 
 app = Flask(__name__)
+print("🚀🚀🚀 SIGNALIQ MAIN.PY LOADED 2026-06-07 🚀🚀🚀")
 CORS(app)
 
-# Inicializar SignalIQ Score
+# ============================================================
+# CONFIG
+# ============================================================
+
 signal_scorer = SignalIQScore()
 event_classifier = EventClassifier()
 
+static_dir = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "static"
+)
+
+# ============================================================
+# GEMINI
+# ============================================================
+
 def get_api_key():
-    """Obtener la primera API key disponible"""
-    for key_name in ['GEMINI_API_KEY_1', 'GEMINI_API_KEY_2', 'GEMINI_API_KEY_3', 'GEMINI_API_KEY']:
+    for key_name in [
+        "GEMINI_API_KEY_1",
+        "GEMINI_API_KEY_2",
+        "GEMINI_API_KEY_3",
+        "GEMINI_API_KEY",
+    ]:
         key = os.environ.get(key_name)
         if key:
             return key
     return None
 
-# Inicializar Gemini
 api_key = get_api_key()
 model = None
 
 if api_key:
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        print("✅ Gemini initialized successfully")
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        print("✅ Gemini initialized")
     except Exception as e:
-        print(f"❌ Gemini initialization error: {e}")
+        print(f"❌ Gemini error: {e}")
 else:
-    print("❌ No API keys found in environment")
+    print("❌ Gemini key missing")
 
-@app.route('/health', methods=['GET'])
+# ============================================================
+# DIAGNOSTIC
+# ============================================================
+
+@app.route("/version")
+def version():
+    return jsonify({
+        "service": "SignalIQ",
+        "version": "2026-06-07",
+        "commit": "FORCE-REDEPLOY",
+        "frontend": "react-build-present"
+    })
+
+@app.route("/health")
 def health():
     return jsonify({
-        'status': 'ok',
-        'service': 'SignalIQ',
-        'mode': 'REAL' if model else 'MOCK',
-        'features': ['analysis', 'signal_score', 'event_classification']
+        "status": "ok",
+        "service": "SignalIQ",
+        "mode": "REAL" if model else "MOCK"
     })
 
-@app.route('/analyze/<ticker>', methods=['GET'])
+@app.route("/routes")
+def routes():
+    return jsonify({
+        "routes": sorted([
+            str(rule)
+            for rule in app.url_map.iter_rules()
+        ])
+    })
+
+# ============================================================
+# ANALYSIS
+# ============================================================
+
+@app.route("/analyze/<ticker>")
 def analyze(ticker):
-    """Análisis original con Gemini"""
+
     if not model:
-        return jsonify({'error': 'Gemini not configured'}), 500
-    
+        return jsonify({
+            "error": "Gemini not configured"
+        }), 500
+
     try:
         ticker = ticker.upper()
-        prompt = f"Analyze {ticker} stock briefly. Give recommendation BUY/SELL/HOLD in 2 sentences."
-        
-        response = model.generate_content(prompt)
-        analysis = response.text
-        
-        if "BUY" in analysis.upper():
-            rec = "BUY"
-        elif "SELL" in analysis.upper():
-            rec = "SELL"
-        else:
-            rec = "HOLD"
-        
+
+        response = model.generate_content(
+            f"Analyze {ticker} stock briefly. "
+            "Give recommendation BUY/SELL/HOLD."
+        )
+
+        text = response.text
+
+        recommendation = "HOLD"
+
+        if "BUY" in text.upper():
+            recommendation = "BUY"
+        elif "SELL" in text.upper():
+            recommendation = "SELL"
+
         return jsonify({
-            'success': True,
-            'analysis': {
-                'ticker': ticker,
-                'recommendation': rec,
-                'full_analysis': analysis,
-                'timestamp': datetime.now().isoformat()
+            "success": True,
+            "analysis": {
+                "ticker": ticker,
+                "recommendation": recommendation,
+                "full_analysis": text,
+                "timestamp": datetime.now().isoformat()
             }
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
-@app.route('/score/<ticker>', methods=['GET'])
-def get_signal_score(ticker):
-    """Nuevo endpoint: SignalIQ Score con explicación"""
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ============================================================
+# SIGNAL SCORE
+# ============================================================
+
+@app.route("/score/<ticker>")
+def score(ticker):
+
     try:
-        ticker = ticker.upper()
-        
-        # Por ahora, usamos datos de ejemplo
-        # En producción, esto vendría de noticias reales
         news_item = {
-            'title': f'{ticker} market update',
-            'content': f'Recent developments for {ticker} show positive momentum',
-            'ticker': ticker,
-            'source': 'bloomberg',
-            'sentiment': 'neutral'
+            "title": f"{ticker} market update",
+            "content": f"Recent developments for {ticker}",
+            "ticker": ticker.upper(),
+            "source": "bloomberg",
+            "sentiment": "neutral"
         }
-        
-        # Calcular SignalIQ Score
-        score_result = signal_scorer.calculate(news_item)
-        
+
+        result = signal_scorer.calculate(news_item)
+
         return jsonify({
-            'success': True,
-            'ticker': ticker,
-            'timestamp': datetime.now().isoformat(),
-            'signal_score': score_result
+            "success": True,
+            "ticker": ticker.upper(),
+            "signal_score": result
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
-@app.route('/classify', methods=['POST'])
-def classify_news():
-    """Clasificar evento de una noticia"""
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ============================================================
+# CLASSIFIER
+# ============================================================
+
+@app.route("/classify", methods=["POST"])
+def classify():
+
     try:
-        data = request.get_json()
-        title = data.get('title', '')
-        content = data.get('content', '')
-        
-        result = event_classifier.classify(title, content)
-        
+        data = request.get_json() or {}
+
+        result = event_classifier.classify(
+            data.get("title", ""),
+            data.get("content", "")
+        )
+
         return jsonify({
-            'success': True,
-            'classification': result
+            "success": True,
+            "classification": result
         })
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/debug/env', methods=['GET'])
-def debug_env():
-    """Endpoint de diagnóstico"""
-    keys_found = []
-    for key in ['GEMINI_API_KEY', 'GEMINI_API_KEY_1', 'GEMINI_API_KEY_2', 'GEMINI_API_KEY_3']:
-        value = os.environ.get(key)
-        if value:
-            keys_found.append(f"{key}=present (length: {len(value)})")
-        else:
-            keys_found.append(f"{key}=NOT SET")
-    
-    return jsonify({
-        'environment_variables': keys_found,
-        'has_gemini_key': model is not None,
-        'mode': 'REAL' if model else 'MOCK',
-        'signal_score_version': signal_scorer.VERSION
-    })
+# ============================================================
+# DATABASE
+# ============================================================
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+def get_db():
 
-@app.route('/api/stats', methods=['GET'])
-def get_api_stats():
-    """Get system statistics from database"""
-    import psycopg2
-    
+    db_url = os.environ.get("DATABASE_URL")
+
+    if not db_url:
+        raise Exception("DATABASE_URL missing")
+
+    return psycopg2.connect(db_url)
+
+@app.route("/api/stats")
+def stats():
+
     try:
-        db_url = os.environ.get('DATABASE_URL')
-        if not db_url:
-            return jsonify({'error': 'Database not configured'}), 500
-        
-        conn = psycopg2.connect(db_url)
+        conn = get_db()
         cur = conn.cursor()
-        
-        cur.execute("SELECT COUNT(*) FROM signal_predictions")
-        total_signals = cur.fetchone()[0]
-        
-        cur.execute("SELECT COUNT(*) FROM signal_predictions WHERE signal = 'BULLISH'")
+
+        cur.execute(
+            "SELECT COUNT(*) FROM signal_predictions"
+        )
+        total = cur.fetchone()[0]
+
+        cur.execute(
+            "SELECT COUNT(*) FROM signal_predictions WHERE signal='BULLISH'"
+        )
         bullish = cur.fetchone()[0]
-        
-        cur.execute("SELECT AVG(score) FROM signal_predictions WHERE score IS NOT NULL")
-        avg_score = cur.fetchone()[0] or 0
-        
-        cur.execute("SELECT COUNT(DISTINCT ticker) FROM signal_predictions")
-        active_tickers = cur.fetchone()[0]
-        
-        conn.close()
-        
-        return jsonify({
-            'success': True,
-            'total_signals': total_signals,
-            'bullish_signals': bullish,
-            'average_score': round(float(avg_score), 1),
-            'active_tickers': active_tickers
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/signals', methods=['GET'])
-def get_api_signals():
-    """Get all signals from database"""
-    import psycopg2
-    
+        cur.execute(
+            "SELECT AVG(score) FROM signal_predictions"
+        )
+        avg_score = cur.fetchone()[0] or 0
+
+        cur.execute(
+            "SELECT COUNT(DISTINCT ticker) FROM signal_predictions"
+        )
+        tickers = cur.fetchone()[0]
+
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "total_signals": total,
+            "bullish_signals": bullish,
+            "average_score": round(float(avg_score), 1),
+            "active_tickers": tickers
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/signals")
+def signals():
+
     try:
-        db_url = os.environ.get('DATABASE_URL')
-        if not db_url:
-            return jsonify({'error': 'Database not configured'}), 500
-        
-        conn = psycopg2.connect(db_url)
+        conn = get_db()
         cur = conn.cursor()
-        
+
         cur.execute("""
-            SELECT ticker, score, signal, strength, explanation, 
-                   price_at_signal, created_at
+            SELECT
+                ticker,
+                score,
+                signal,
+                strength,
+                explanation,
+                price_at_signal,
+                created_at
             FROM signal_predictions
             ORDER BY created_at DESC
             LIMIT 50
         """)
-        
-        signals = []
-        for row in cur.fetchall():
-            signals.append({
-                'ticker': row[0],
-                'score': row[1],
-                'signal': row[2],
-                'strength': row[3],
-                'explanation': row[4],
-                'price_at_signal': row[5],
-                'timestamp': row[6].isoformat() if row[6] else None
-            })
-        
+
+        rows = cur.fetchall()
+
         conn.close()
-        
+
         return jsonify({
-            'success': True,
-            'count': len(signals),
-            'signals': signals
+            "success": True,
+            "count": len(rows),
+            "signals": rows
         })
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
-# FORCE_DEPLOY_API_ENDPOINTS
+# ============================================================
+# FRONTEND
+# ============================================================
 
-# DEPLOY_TRIGGER_1780864013
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def frontend(path):
 
-@app.route('/routes', methods=['GET'])
-def list_routes():
-    import urllib
-    routes = []
-    for rule in app.url_map.iter_rules():
-        routes.append({
-            'endpoint': rule.endpoint,
-            'methods': list(rule.methods),
-            'path': str(rule)
-        })
-    return jsonify({'routes': routes})
-
-# Serve frontend static files (React build)
-from flask import send_from_directory
-import os
-
-# Path to the frontend build directory
-static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static')
-
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve(path):
-    """Serve React frontend"""
-    if not path:
-        return send_from_directory(static_dir, 'index.html')
-    
-    # Check if file exists in static directory
     file_path = os.path.join(static_dir, path)
-    if os.path.exists(file_path):
+
+    if path and os.path.exists(file_path):
         return send_from_directory(static_dir, path)
-    
-    # For React Router routes, return index.html
-    return send_from_directory(static_dir, 'index.html')
 
-# Serve frontend static files
-from flask import send_from_directory
-import os
+    return send_from_directory(
+        static_dir,
+        "index.html"
+    )
 
-static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static')
+# ============================================================
+# MAIN
+# ============================================================
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve_frontend(path):
-    if os.path.exists(os.path.join(static_dir, path)):
-        return send_from_directory(static_dir, path)
-    return send_from_directory(static_dir, 'index.html')
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+
+    app.run(
+        host="0.0.0.0",
+        port=port
+    )
