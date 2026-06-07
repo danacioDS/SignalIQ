@@ -1,5 +1,10 @@
 """SignalIQ API"""
 
+print("=" * 60)
+print("SIGNALIQ BUILD 2026-06-07")
+print("FILE:", __file__)
+print("=" * 60)
+
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from datetime import datetime
@@ -74,6 +79,13 @@ def health():
         "status": "ok",
         "service": "SignalIQ",
         "mode": "REAL" if model else "MOCK"
+    })
+
+@app.route("/debug-signaliq-2026")
+def debug_signaliq():
+    return jsonify({
+        "message": "SIGNALIQ DEBUG ROUTE ACTIVE",
+        "file": __file__
     })
 
 @app.route("/routes")
@@ -285,6 +297,11 @@ def frontend(path):
 # ============================================================
 # MAIN
 # ============================================================
+
+print("\nREGISTERED ROUTES:")
+for rule in app.url_map.iter_rules():
+    print(rule)
+print()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
