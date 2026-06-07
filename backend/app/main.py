@@ -210,17 +210,18 @@ def get_db():
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-    result = urllib.parse.urlparse(db_url)
+    parsed = urllib.parse.urlparse(db_url)
 
-    return psycopg2.connect(
-        dbname=result.path.lstrip("/"),
-        user=result.username,
-        password=result.password,
-        host=result.hostname,
-        port=result.port or 5432,
+    conn = psycopg2.connect(
+        dbname=parsed.path.lstrip("/"),
+        user=parsed.username,
+        password=parsed.password,
+        host=parsed.hostname,
+        port=parsed.port or 5432,
         sslmode="require"
     )
 
+    return conn
 
 #####
 
