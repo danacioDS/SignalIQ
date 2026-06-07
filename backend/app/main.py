@@ -228,3 +228,15 @@ def get_api_signals():
 # FORCE_DEPLOY_API_ENDPOINTS
 
 # DEPLOY_TRIGGER_1780864013
+
+@app.route('/routes', methods=['GET'])
+def list_routes():
+    import urllib
+    routes = []
+    for rule in app.url_map.iter_rules():
+        routes.append({
+            'endpoint': rule.endpoint,
+            'methods': list(rule.methods),
+            'path': str(rule)
+        })
+    return jsonify({'routes': routes})
