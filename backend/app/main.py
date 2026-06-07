@@ -85,7 +85,7 @@ def get_db():
         port=url.port or 5432,
         sslmode="require"
     )
-
+print("DATABASE_URL RAW:", repr(os.environ.get("DATABASE_URL")))
 # ============================================================
 # ROUTES
 # ============================================================
