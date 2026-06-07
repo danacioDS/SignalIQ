@@ -197,19 +197,30 @@ def classify():
 #####
 
 def get_db():
-    import psycopg2
     import os
+    import psycopg2
+    import urllib.parse
 
     db_url = os.environ.get("DATABASE_URL")
 
     if not db_url:
         raise Exception("DATABASE_URL missing")
 
-    # Render sometimes gives postgres:// instead of postgresql://
+    # Normalize Render format
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-    return psycopg2.connect(db_url, sslmode="require")
+    result = urllib.parse.urlparse(db_url)
+
+    return psycopg2.connect(
+        dbname=result.path.lstrip("/"),
+        user=result.username,
+        password=result.password,
+        host=result.hostname,
+        port=result.port or 5432,
+        sslmode="require"
+    )
+
 
 #####
 
