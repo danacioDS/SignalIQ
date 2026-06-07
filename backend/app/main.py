@@ -240,3 +240,25 @@ def list_routes():
             'path': str(rule)
         })
     return jsonify({'routes': routes})
+
+# Serve frontend static files (React build)
+from flask import send_from_directory
+import os
+
+# Path to the frontend build directory
+static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static')
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    """Serve React frontend"""
+    if not path:
+        return send_from_directory(static_dir, 'index.html')
+    
+    # Check if file exists in static directory
+    file_path = os.path.join(static_dir, path)
+    if os.path.exists(file_path):
+        return send_from_directory(static_dir, path)
+    
+    # For React Router routes, return index.html
+    return send_from_directory(static_dir, 'index.html')
