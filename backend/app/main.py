@@ -262,3 +262,16 @@ def serve(path):
     
     # For React Router routes, return index.html
     return send_from_directory(static_dir, 'index.html')
+
+# Serve frontend static files
+from flask import send_from_directory
+import os
+
+static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static')
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    if os.path.exists(os.path.join(static_dir, path)):
+        return send_from_directory(static_dir, path)
+    return send_from_directory(static_dir, 'index.html')
