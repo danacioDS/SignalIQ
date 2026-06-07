@@ -144,3 +144,83 @@ def debug_env():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
+
+@app.route('/api/stats', methods=['GET'])
+def get_api_stats():
+    """Get system statistics from database"""
+    import psycopg2
+    
+    try:
+        db_url = os.environ.get('DATABASE_URL')
+        if not db_url:
+            return jsonify({'error': 'Database not configured'}), 500
+        
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+        
+        cur.execute("SELECT COUNT(*) FROM signal_predictions")
+        total_signals = cur.fetchone()[0]
+        
+        cur.execute("SELECT COUNT(*) FROM signal_predictions WHERE signal = 'BULLISH'")
+        bullish = cur.fetchone()[0]
+        
+        cur.execute("SELECT AVG(score) FROM signal_predictions WHERE score IS NOT NULL")
+        avg_score = cur.fetchone()[0] or 0
+        
+        cur.execute("SELECT COUNT(DISTINCT ticker) FROM signal_predictions")
+        active_tickers = cur.fetchone()[0]
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'total_signals': total_signals,
+            'bullish_signals': bullish,
+            'average_score': round(float(avg_score), 1),
+            'active_tickers': active_tickers
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/signals', methods=['GET'])
+def get_api_signals():
+    """Get all signals from database"""
+    import psycopg2
+    
+    try:
+        db_url = os.environ.get('DATABASE_URL')
+        if not db_url:
+            return jsonify({'error': 'Database not configured'}), 500
+        
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT ticker, score, signal, strength, explanation, 
+                   price_at_signal, created_at
+            FROM signal_predictions
+            ORDER BY created_at DESC
+            LIMIT 50
+        """)
+        
+        signals = []
+        for row in cur.fetchall():
+            signals.append({
+                'ticker': row[0],
+                'score': row[1],
+                'signal': row[2],
+                'strength': row[3],
+                'explanation': row[4],
+                'price_at_signal': row[5],
+                'timestamp': row[6].isoformat() if row[6] else None
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'count': len(signals),
+            'signals': signals
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
