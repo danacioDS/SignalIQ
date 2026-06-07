@@ -202,18 +202,11 @@ def get_db():
     if not db_url:
         raise Exception("DATABASE_URL missing")
 
-    # Render sometimes uses postgres:// instead of postgresql://
-    if db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql://", 1)
-
-    try:
-        return psycopg2.connect(
-            db_url,
-            sslmode="require"
-        )
-    except Exception as e:
-        print("❌ DB CONNECTION ERROR:", str(e))
-        raise
+    return psycopg2.connect(
+        db_url,
+        sslmode="require",
+        uri=True
+    )
 
 #####
 
