@@ -2,16 +2,13 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Copiar requirements.txt del backend
+# Copiar requirements.txt y código
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copiar todo el código del backend
 COPY backend/ .
 
-# Variables de entorno
 ENV PORT=10000
-EXPOSE 10000
+ENV PYTHONPATH=/app
 
-# Comando para ejecutar la aplicación
+EXPOSE 10000
 CMD ["python", "-m", "app.main"]
