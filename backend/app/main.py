@@ -244,3 +244,27 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port
     )
+def get_db():
+    import os
+    import psycopg2
+    
+    db_url = os.environ.get("DATABASE_URL")
+    
+    if not db_url:
+        raise Exception("DATABASE_URL missing")
+    
+    # Limpiar espacios y saltos de línea invisibles
+    db_url = db_url.strip()
+    
+    # Render compatibility: convertir postgres:// a postgresql://
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    
+    # Debug: ver la URL limpia (para logs)
+    print(f"DB URL (clean): {db_url[:50]}...")
+    
+    # Conexión directa con sslmode
+    return psycopg2.connect(
+        db_url,
+        sslmode="require"
+    )
