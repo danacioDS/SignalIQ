@@ -4,8 +4,9 @@ import os
 from typing import Optional
 from dotenv import load_dotenv
 
-# Cargar .env al inicio
-load_dotenv()
+# Load .env only if not already loaded (not in test environment)
+if os.environ.get('ENVIRONMENT') != 'test':
+    load_dotenv()
 
 class LLMRouter:
     """Intelligent router between multiple LLMs"""

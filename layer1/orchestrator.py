@@ -27,7 +27,7 @@ def atomic_acquire_lock(lock_type: str) -> Path:
         return lock_path
     except FileExistsError:
         logger.error("Another %s run already in progress (lock: %s)", lock_type, lock_path)
-        sys.exit(1)
+        raise FileExistsError(f"Another {lock_type} run already in progress")
 
 
 def release_lock(lock_path: Path):

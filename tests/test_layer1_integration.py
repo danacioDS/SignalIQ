@@ -1,4 +1,9 @@
-"""Integration tests for SignalIQ Layer 1 (collection, writing, logging, locking)."""
+"""
+DEPRECATED: This test file will be removed after 2026-06-19.
+Use `pytest tests/pytest/ -m smoke` as the single source of truth.
+
+Integration tests for SignalIQ Layer 1 (collection, writing, logging, locking).
+"""
 
 import json
 import os
@@ -126,9 +131,9 @@ def test_all_fail():
     with patch("layer1.collect_prices.fetch_asset_price", return_value=None):
         try:
             fetch_prices()
-            _check("sys.exit was called", False, True)
-        except SystemExit as e:
-            _check("exit code is 1", e.code, 1)
+            _check("exception was raised", False, True)
+        except Exception as e:
+            _check("exception mentions all assets", "All" in str(e), True)
 
 
 # ---------------------------------------------------------------------------

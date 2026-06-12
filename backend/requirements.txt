@@ -5,3 +5,4 @@ yfinance==0.2.40
 python-dotenv==1.0.0
 groq==0.9.0
 psycopg2-binary==2.9.12
+Flask-Limiter==3.5.0

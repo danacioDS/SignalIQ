@@ -1,0 +1,25 @@
+=== BASELINE SIGNALIQ ===
+Date: Fri Jun 12 11:49:09 -04 2026
+
+=== 1. IMPORTS ===
+🔧 LLM Config: PRIMARY=gemini, FALLBACK=mock
+🔑 GEMINI_API_KEY: ✓ Encontrada
+✅ Gemini client initialized
+🚀 SignalIQ Layer4 Orchestrator initialized
+✅ Layer4
+============================================================
+=== 2. TESTS ===
+  PASS: Tue after long gap streak (gap=4, reset)
+
+ALL TESTS PASSED
+    import google.generativeai as genai
+
+tests/pytest/test_smoke.py::test_api_import
+  /home/daniel/repo_lab/SignalIQ/backend/app/main.py:33: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    'timestamp': datetime.utcnow().isoformat(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 4 passed, 2 warnings in 0.84s =========================
+=== 3. ARCHITECTURE ===
+Layer4Orchestrator implementations: 3
+calculate_ndi definitions: 1

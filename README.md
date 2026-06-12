@@ -12,6 +12,11 @@ NDI = sentiment_zscore − momentum_zscore
 
 When narrative runs ahead of price action, SignalIQ flags it as exhaustion, distribution, or severe divergence — not a prediction, but a systematic measurement of risk conditions.
 
+##### Crea y activa
+python3 -m venv venv
+sudo apt install python3-venv
+source venv/bin/activate
+
 ---
 
 ## Quick Start

@@ -20,6 +20,30 @@ ASSETS = {
 REQUEST_DELAY_SECONDS = 1
 
 
+def normalize_price_response(response: dict, ticker: str) -> dict | None:
+    """Parse Yahoo Finance chart API response into a normalized price record."""
+    try:
+        result = response["chart"]["result"][0]
+        timestamp = result["timestamp"][0]
+        quote = result["indicators"]["quote"][0]
+        adjclose = result["indicators"].get("adjclose", [{}])[0]
+
+        return {
+            "ticker": ticker,
+            "vendor": "yahoo_finance",
+            "date": datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d"),
+            "open": round(float(quote["open"][0]), 4),
+            "high": round(float(quote["high"][0]), 4),
+            "low": round(float(quote["low"][0]), 4),
+            "close": round(float(quote["close"][0]), 4),
+            "adj_close": round(float(adjclose.get("adjclose", [quote["close"][0]])[0]), 4),
+            "volume": int(quote["volume"][0]),
+        }
+    except (KeyError, IndexError, TypeError) as e:
+        logger.warning("Failed to normalize price response for %s: %s", ticker, e)
+        return None
+
+
 def fetch_asset_price(symbol: str, ticker: str) -> dict:
     """Fetch price using yfinance."""
     try:
@@ -67,7 +91,7 @@ def fetch_prices() -> list[dict]:
     
     if not results:
         logger.critical("All %d assets failed to fetch", len(ASSETS))
-        sys.exit(1)
+        raise Exception(f"All {len(ASSETS)} assets failed")
     
     return results
 
