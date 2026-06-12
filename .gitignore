@@ -1,5 +1,6 @@
 # Secrets
 .env
+.env.*
 *.key
 *_key.py
 api_*.py
@@ -11,6 +12,11 @@ api_*.py
 __pycache__/
 *.pyc
 *.pyo
+
+# Virtual environments
+venv/
+backend/venv/
+backend/static/venv/
 
 # Legacy
 legacy/
@@ -26,3 +32,26 @@ logs/
 *.bak
 *.backup
 *.tar.gz
+
+# Secrets
+.env
+*.key
+*.pem
+
+# Logs
+*.log
+logs/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+

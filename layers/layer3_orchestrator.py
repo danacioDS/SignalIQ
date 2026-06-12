@@ -1,13 +1,8 @@
 """Layer 3 orchestrator — coordinates entity resolution, sentiment, and momentum."""
 
 import re
-import sys
 from collections import defaultdict
 from datetime import date, datetime
-from pathlib import Path
-
-if __name__ == "__main__" and __package__ is None:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from layers.layer3_config import CONFIG
 from layers.layer3_entity import EntityResolver, normalize_headline
@@ -128,47 +123,3 @@ class Layer3Orchestrator:
         self._last_finalized_date = dt
 
         return result
-
-
-if __name__ == "__main__":
-    from dataclasses import replace
-
-    cfg = replace(CONFIG, min_headlines_per_day=1)
-    orch = Layer3Orchestrator(cfg)
-
-    prices_aapl = [100.0 + i * 0.5 + (0.1 if i % 2 == 0 else 0.0) for i in range(12)]
-    prices_msft = [200.0 + i * 0.3 + (0.1 if i % 2 == 0 else 0.0) for i in range(12)]
-
-    orch.process_price("AAPL", date(2025, 12, 31), prices_aapl[0])
-    orch.process_price("MSFT", date(2025, 12, 31), prices_msft[0])
-
-    for day in range(1, 12):
-        dt = date(2026, 1, day)
-
-        orch.process_price("AAPL", dt, prices_aapl[day])
-        orch.process_price("MSFT", dt, prices_msft[day])
-
-        orch.process_headline(
-            "strong profit growth for apple this quarter",
-            datetime(2026, 1, day, 14, 0),
-            datetime(2026, 1, day, 14, 5),
-            url_param="AAPL",
-        )
-        orch.process_headline(
-            "microsoft shows weak growth outlook",
-            datetime(2026, 1, day, 14, 30),
-            datetime(2026, 1, day, 14, 35),
-            url_param="MSFT",
-        )
-
-        result = orch.finalize_day(dt)
-        for ticker, data in result.items():
-            inner = data[dt.isoformat()]
-            print(
-                f"  Day {day:2d}  {ticker:5s}  "
-                f"sentiment_z={inner['sentiment_zscore']!s:>8s}  "
-                f"momentum_z={inner['momentum_zscore']!s:>8s}  "
-                f"return={inner['momentum_return']!s:>10s}"
-            )
-
-    print("\n  → First z-scores appear on Day 11 (10 prior observations)")

@@ -1,7 +1,0 @@
-{
-    "NVDA": ["NVIDIA", "Nvidia", "NVIDIA CORPORATION", "Nvidia Corp"],
-    "AAPL": ["Apple", "Apple Inc."],
-    "MSFT": ["Microsoft", "Microsoft Corporation"],
-    "SPX": ["S&P 500", "S&P500", "the S&P"],
-    "BTC-USD": ["Bitcoin", "BTC"]
-}

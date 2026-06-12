@@ -26,7 +26,8 @@ def test_only_one_layer4_orchestrator():
 @pytest.mark.smoke
 def test_no_circular_imports():
     import layers
-    import signaliq.core
+    import layers.llm_router
+    import layers.system_config
     import backend.app
 
 @pytest.mark.smoke
@@ -46,7 +47,7 @@ def test_ndi_formula_consistency():
 @pytest.mark.smoke
 def test_no_sys_exit_in_libraries():
     violations = []
-    for root, dirs, files in os.walk('layer1'):
+    for root, dirs, files in os.walk('ingestion'):
         for file in files:
             if file.endswith('.py'):
                 with open(os.path.join(root, file)) as f:

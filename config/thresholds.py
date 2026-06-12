@@ -1,7 +1,3 @@
 """Production-critical thresholds - changing these affects signals"""
 
-NDI_ACTIVE_THRESHOLD = 1.5
-NDI_STRONG_THRESHOLD = 0.7
-NDI_FLAT_PRICE_THRESHOLD = 0.005
-PRICE_CHANGE_THRESHOLD = 0.02
 MIN_PRICE_HISTORY_DAYS = 6

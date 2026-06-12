@@ -85,22 +85,3 @@ def compute_measurements(sentiment_zscore, momentum_zscore, price_history):
         "return_5d": calculate_5d_return(price_history),
     }
 
-
-if __name__ == "__main__":
-    # --- Example usage ---
-    prices = [100.0, 102.0, 101.5, 103.0, 104.5, 106.0]
-
-    result = compute_measurements(0.8, 0.3, prices)
-    print("VALID case:", result)
-
-    result = compute_measurements(None, 0.3, prices)
-    print("None sentiment:", result)
-
-    result = compute_measurements(0.8, None, prices)
-    print("None momentum:", result)
-
-    result = compute_measurements(0.8, 0.3, [100.0, 101.0])
-    print("Short history:", result)
-
-    print("\nNDI:", calculate_ndi(1.5, 0.7))
-    print("5d return:", calculate_5d_return(prices))

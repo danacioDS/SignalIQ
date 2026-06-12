@@ -1,13 +1,8 @@
 """Layer 3 momentum — daily return calculation and rolling z-score processor."""
 
 import math
-import sys
 from collections import deque
 from datetime import date
-from pathlib import Path
-
-if __name__ == "__main__" and __package__ is None:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from layers.layer3_config import CONFIG
 
@@ -46,6 +41,13 @@ class MomentumProcessor:
             self.price_history[ticker] = {}
 
         self.price_history[ticker][dt] = adj_close
+
+        # Prune old prices beyond 2x the config window to prevent unbounded growth
+        if len(self.price_history[ticker]) > self._config.max_history_days * 2:
+            keep_from = sorted(self.price_history[ticker])[-self._config.max_history_days]
+            self.price_history[ticker] = {
+                d: v for d, v in self.price_history[ticker].items() if d >= keep_from
+            }
 
         prior_dates = [d for d in self.price_history[ticker] if d < dt]
         if not prior_dates:
@@ -122,33 +124,3 @@ class MomentumProcessor:
         """``True`` if a price exists for *ticker* on a date strictly before *dt*."""
         prices = self.price_history.get(ticker, {})
         return any(d < dt for d in prices)
-
-
-if __name__ == "__main__":
-    processor = MomentumProcessor()
-
-    print("=== MomentumProcessor Demo: FIRST Z-SCORE ON DAY 11 ===\n")
-
-    # Seed day 0 so that days 1-11 each have a prior price
-    seed_dt = date(2025, 12, 31)
-    processor.add_price("AAPL", seed_dt, 100.0)
-    processor.commit_pending_returns("AAPL", seed_dt)
-
-    for day in range(1, 12):
-        dt = date(2026, 1, day)
-        price = 100.0 + day * 0.5 + (0.2 if day % 2 == 0 else -0.2)
-
-        daily_return = processor.add_price("AAPL", dt, price)
-        has_prev = processor.has_previous_price("AAPL", dt)
-
-        # Simulate end-of-day commit
-        processor.commit_pending_returns("AAPL", dt)
-
-        z = processor.get_rolling_zscore("AAPL", dt, daily_return)
-        hist_len = processor.get_history_length("AAPL")
-
-        ret_str = f"{daily_return:+.6f}" if daily_return is not None else "None   "
-        z_str = f"{z:+.6f}" if z is not None else "None"
-        print(f"  Day {day:2d}  | price={price:6.1f}  | return={ret_str}  | hist={hist_len:2d}  | prior_price={has_prev}  | z-score={z_str}")
-
-    print("\n  → First z-score appears on Day 11 (10 prior observations)")

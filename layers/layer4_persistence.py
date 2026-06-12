@@ -102,22 +102,3 @@ class PersistenceTracker:
     def state(self) -> dict:
         """Expose raw state for inspection (read-only view intended)."""
         return self._data
-
-
-if __name__ == "__main__":
-    tracker = PersistenceTracker()
-
-    # Simulate 5 days of data for ticker AAPL
-    days = [
-        ("2026-05-27", 0.3),   # below threshold
-        ("2026-05-28", 1.6),   # day 1 above threshold  → streak=1
-        ("2026-05-29", 1.8),   # day 2 above threshold  → streak=2 → ACTIVE
-        ("2026-05-30", 2.1),   # day 3 above threshold  → streak=3 → ACTIVE
-        ("2026-06-02", 0.4),   # below threshold        → streak=0 → INACTIVE
-    ]
-
-    for date, ndi in days:
-        state = tracker.get_signal_state("AAPL", ndi)
-        streak = tracker.state["AAPL"]["streak"]
-        regime = PersistenceTracker.get_regime(ndi)
-        print(f"{date}  | NDI={ndi:+.1f}  | streak={streak}  | {state:10s} | {regime}")

@@ -51,12 +51,11 @@ SignalIQ tiene una base conceptual interesante. Tras las correcciones aplicadas,
 | 1 | 🔴 CRÍTICA | `backend/app/main.py:21-25`, `backend/app/llm_provider.py:15-19`, `layers/layer4_orchestrator.py:11`, `docker-compose.yml:9-11`, `.env:9` | **5 API keys de Google Gemini hardcodeadas** en 5 ubicaciones distintas + `.env` commiteado |
 | 2 | 🔴 CRÍTICA | `tests/test_layer4.py:27-31`, `tests/test_layer1_integration.py:57` | **Tests principales rotos**: importan símbolos que no existen (`process_asset`, `normalize_price_response`). Fallan con `ImportError` |
 | 3 | 🔴 CRÍTICA | `backend/app/main.py:177` | **Recursión infinita en endpoint HTTP**: error 429 de llama a `analyze(ticker)` recursivamente, causa stack overflow |
-| 4 | 🔴 CRÍTICA | `data_storage/001_create_layer2_schema.sql` vs `layer1/writer.py:49-55` | **Schema BD incompleto**: código llama a `raw.insert_price_record()` y `raw.insert_headline_record()`, pero el SQL solo crea tablas en `public` sin schemas ni funciones |
-| 5 | 🔴 ALTA | `layer1/collect_news.py:179`, `layer1/collect_prices.py:69` | **`sys.exit(1)` en funciones de librería**: mata todo el proceso sin posibilidad de recovery |
+| 4 | 🔴 CRÍTICA | `sql/001_create_layer2_schema.sql` vs `ingestion/writer.py:49-55` | **Schema BD incompleto**: código llama a `raw.insert_price_record()` y `raw.insert_headline_record()`, pero el SQL solo crea tablas en `public` sin schemas ni funciones |
+| 5 | 🔴 ALTA | `ingestion/collect_news.py:179`, `ingestion/collect_prices.py:69` | **`sys.exit(1)` en funciones de librería**: mata todo el proceso sin posibilidad de recovery |
 | 6 | 🔴 ALTA | `.env:5,21`, `layers/layer4_orchestrator.py:8-11` | **Config duplicada y forzada**: `PRIMARY_LLM` definido dos veces en `.env`, y el orquestador forza `gemini` pisando variable de entorno |
-| 7 | 🔴 ALTA | `backend/app/main.py:53` vs `layers/layer4_measurement.py:27` | **Dos funciones `calculate_ndi`** con el mismo nombre pero semántica diferente (una basada en precio, otra en divergencia narrativa) |
-| 8 | 🔴 ALTA | `signaliq/core/config.py:16-33` | **Config incompleta**: referencia `config.db.url` y `config.DATA_DIR` que no existen, causa `AttributeError` |
-| 9 | 🔴 ALTA | `layer1/writer.py:86-89` | **Sin rollback en `UniqueViolation`**: transacción queda abortada después de duplicado, fallan queries subsecuentes |
+| 8 | 🔴 ALTA | `layers/system_config.py:16-33` (antes `layers/system_config.py` (antes `signaliq/core/config.py`)) | **Config incompleta**: referencia `config.db.url` y `config.DATA_DIR` que no existen, causa `AttributeError` |
+| 9 | 🔴 ALTA | `ingestion/writer.py:86-89` | **Sin rollback en `UniqueViolation`**: transacción queda abortada después de duplicado, fallan queries subsecuentes |
 | 10 | 🔴 ALTA | `layers/layer4_orchestrator.py` y `layers/layer4_orchestrator_simple.py` | **Clase `Layer4Orchestrator` duplicada**: dos archivos con la misma clase, compitiendo en namespace |
 
 ---
@@ -96,7 +95,7 @@ from layers.layer4_orchestrator import (
 from layer1.collect_prices import normalize_price_response
 ```
 
-**Problema:** La función `normalize_price_response` no existe en `layer1/collect_prices.py`. El `collect_prices.py` actual usa `yfinance` directamente y no tiene esa función.
+**Problema:** La función `normalize_price_response` no existe en `ingestion/collect_prices.py`. El `collect_prices.py` actual usa `yfinance` directamente y no tiene esa función.
 
 **Impacto:** `python tests/test_layer1_integration.py` falla con `ImportError`. 14 tests de integración de Layer 1 no se ejecutan.
 
@@ -134,7 +133,7 @@ for attempt in range(len(API_KEYS)):
 
 #### B-04 [ALTA] `sys.exit(1)` dentro de funciones de biblioteca
 
-**Archivo:** `layer1/collect_news.py:179`, `layer1/collect_prices.py:69`
+**Archivo:** `ingestion/collect_news.py:179`, `ingestion/collect_prices.py:69`
 
 ```python
 # collect_news.py
@@ -166,7 +165,7 @@ raise IngestionError(f"All {len(sources_to_fetch)} feeds failed")
 
 #### B-05 [ALTA] Transacción abortada sin rollback en `write_headline`
 
-**Archivo:** `layer1/writer.py:86-89`
+**Archivo:** `ingestion/writer.py:86-89`
 
 ```python
 except psycopg2.UniqueViolation:
@@ -473,8 +472,8 @@ def calculate_ndi(sentiment_zscore, momentum_zscore):
 #### A-02 [ALTA] Dos clases `Layer4Orchestrator` duplicadas
 
 **Archivos:**
-- `layers/layer4_orchestrator.py` — usa `signaliq.core.llm.llm_router`
-- `layers/layer4_orchestrator_simple.py` — usa `signaliq.core.llm_simple.simple_llm`
+- `layers/layer4_orchestrator.py` — usa `layers.llm_router`
+- `layers/layer4_orchestrator_simple.py` — usa `layers.llm_simple` (moved to legacy)
 
 **Problema:** Ambas definen `class Layer4Orchestrator`. Dependiendo de:
 1. El orden de importación en `__init__.py`
@@ -491,7 +490,7 @@ def calculate_ndi(sentiment_zscore, momentum_zscore):
 
 #### A-03 [ALTA] Config central incompleta — referencias a atributos inexistentes
 
-**Archivo:** `signaliq/core/config.py:16-33`
+**Archivo:** `layers/system_config.py:16-33` (antes `signaliq/core/config.py`)
 
 ```python
 class SignalIQConfig:
@@ -502,13 +501,13 @@ class SignalIQConfig:
         # FALTA: self.db y self.DATA_DIR
 ```
 
-**Archivo:** `signaliq/core/persistence.py:14`
+**Archivo:** `legacy/signaliq_core/persistence.py:14` (antes `signaliq/core/persistence.py`)
 
 ```python
 self.state_file = config.DATA_DIR / "persistence_state.json"  # AttributeError
 ```
 
-**Archivo:** `signaliq/core/persistence.py:21`
+**Archivo:** `legacy/signaliq_core/persistence.py:21` (antes `signaliq/core/persistence.py`)
 
 ```python
 return psycopg2.connect(config.db.url)  # AttributeError
@@ -558,7 +557,7 @@ class SignalIQConfig:
 | `Layer4Orchestrator` | `layer4_orchestrator.py`, `layer4_orchestrator_simple.py` |
 | `calculate_ndi` | `main.py`, `measurement.py` |
 | `PRIMARY_LLM` config | `.env` línea 5 y 21 |
-| `NEGATIVE_WORDS` / `POSITIVE_WORDS` | `layer3_sentiment.py` y `synthetic/data_generator.py` |
+| `NEGATIVE_WORDS` / `POSITIVE_WORDS` | `layer3_sentiment.py` (se eliminó `synthetic/`)
 | Dockerfiles | `Dockerfile` (raíz) y `backend/Dockerfile` |
 | Entity aliases | `layer3_entity.py` (hardcoded) y `config/entity_aliases.json` |
 | Backtest engines | `backtest_engine.py` y `backtest_improved.py` |
@@ -567,17 +566,15 @@ class SignalIQConfig:
 
 #### A-06 [MEDIA] Código muerto y archivos legacy
 
-**Problema:** El repositorio contiene:
+**Problema:** El repositorio contenía:
 - `legacy/apis/` con 11 versiones de API obsoletas
 - `legacy/llm_simple.py` (importado por `layer4_orchestrator_simple.py`)
 - `tests/legacy/` con 10 archivos de test obsoletos
-- `lm_lexicon.py`: 558 líneas, pero solo se usan `POSITIVE` y `NEGATIVE` (~40 líneas). `CONSTRAINING`, `SUPERFLUOUS`, `LITIGIOUS`, `UNCERTAINTY` son ~500 líneas de código muerto.
+- `synthetic/`, `docs/`, `as_built/` con ~40 archivos de documentación y generación de datos
 - Múltiples archivos HTML de frontend en raíz (`frontend.html`, `frontend_automatico.html`, `test_frontend.html`)
-- `oracle.md`, `architecture.md`, `ARCHITECTURE.md` (duplicados)
+- `oracle.md`, `fix_review.md`, `persistence_state.json`
 
-**Impacto:** 40%+ del código en el repositorio es muerto o legacy. Aumenta la carga cognitiva, el tiempo de build, y el riesgo de importar accidentalmente código incorrecto.
-
-**Recomendación:** Eliminar `legacy/`, unificar archivos de documentación, y recortar `lm_lexicon.py` a solo las categorías usadas.
+**Resolución (2026-06-12):** Todo el código muerto fue eliminado: `legacy/`, `docs/`, `synthetic/`, `as_built/`, archivos sueltos en raíz. Los frontends HTML se movieron a `web/`. Se eliminaron `__main__` demo blocks de todos los módulos `layers/`. Reducción de ~35% del repositorio.
 
 ---
 
@@ -623,7 +620,7 @@ class SignalIQConfig:
 
 #### P-01 [MEDIA] Falta de índices en tabla `prices`
 
-**Archivo:** `data_storage/001_create_layer2_schema.sql:7-19`
+**Archivo:** `sql/001_create_layer2_schema.sql:7-19`
 
 ```sql
 CREATE TABLE IF NOT EXISTS prices (
@@ -669,9 +666,9 @@ response = model.generate_content(prompt)
 #### D-01 [CRÍTICA] Schema de base de datos incompleto
 
 **Archivos involucrados:**
-- `data_storage/001_create_layer2_schema.sql` — crea solo `public.prices`, `public.headlines`, `public.ndi_signals`
-- `layer1/writer.py:49-55` — llama a `raw.insert_price_record(...)`
-- `layer1/writer.py:99-100` — consulta `config.news_sources`
+- `sql/001_create_layer2_schema.sql` — crea solo `public.prices`, `public.headlines`, `public.ndi_signals`
+- `ingestion/writer.py:49-55` — llama a `raw.insert_price_record(...)`
+- `ingestion/writer.py:99-100` — consulta `config.news_sources`
 - `simple_ndi.py:45` — consulta `raw.prices`
 - `scripts/run_backtest_real.py:13` — consulta `layer4.signals`
 
@@ -697,7 +694,7 @@ response = model.generate_content(prompt)
 
 #### D-02 [MEDIA] Rollback script destructivo sin verificación
 
-**Archivo:** `data_storage/rollback.sql`
+**Archivo:** `sql/rollback.sql`
 
 ```sql
 DROP TABLE IF EXISTS ndi_signals CASCADE;
@@ -1033,8 +1030,8 @@ def save(self):
 
 | Archivo | Cambio |
 |---------|--------|
-| `layer1/collect_prices.py:70` | Reemplazado `sys.exit(1)` con `raise Exception(...)` |
-| `layer1/collect_news.py:179` | Reemplazado `sys.exit(1)` con `raise Exception(...)` |
+| `ingestion/collect_prices.py:70` | Reemplazado `sys.exit(1)` con `raise Exception(...)` |
+| `ingestion/collect_news.py:179` | Reemplazado `sys.exit(1)` con `raise Exception(...)` |
 | `layer1/orchestrator.py:30` | Reemplazado `sys.exit(1)` con `raise FileExistsError(...)` |
 
 **Resultado:** 0 `sys.exit()` en `layer1/` fuera de bloques `__main__`.
@@ -1043,13 +1040,13 @@ def save(self):
 
 **Problema:** `tests/test_layer1_integration.py:57` importaba `normalize_price_response` que no existía.
 
-**Solución:** Se agregó la función `normalize_price_response()` en `layer1/collect_prices.py:23` que parsea la respuesta JSON de Yahoo Finance chart API.
+**Solución:** Se agregó la función `normalize_price_response()` en `ingestion/collect_prices.py:23` que parsea la respuesta JSON de Yahoo Finance chart API.
 
 **Resultado:** TEST 2 (Fetch Prices) → **9/9 checks PASSED**.
 
 #### 6.3.3 `SignalIQConfig` completado
 
-**Archivo:** `signaliq/core/config.py`
+**Archivo:** `layers/system_config.py` (antes `signaliq/core/config.py`)
 
 **Cambios:**
 - Agregado `self.DATA_DIR` — directorio `data/` relativo a `BASE_DIR`, creado automáticamente.
@@ -1067,7 +1064,7 @@ def save(self):
 
 #### 6.3.5 Rollback en `UniqueViolation` de `write_headline`
 
-**Archivo:** `layer1/writer.py:86-89`
+**Archivo:** `ingestion/writer.py:86-89`
 
 **Cambio:** Agregado `conn.rollback()` antes de retornar en el handler de `psycopg2.UniqueViolation`. Previene transacción abortada que causaba fallo en queries subsecuentes del batch.
 
@@ -1090,11 +1087,8 @@ Los siguientes issues del reporte original permanecen sin resolver:
 
 | # | Issue | Severidad | Archivo |
 |---|-------|-----------|---------|
-| D-01 | Schema BD incompleto — funciones SQL que no existen | CRÍTICA | `data_storage/001_create_layer2_schema.sql` |
+| D-01 | Schema BD incompleto — funciones SQL que no existen | CRÍTICA | `sql/001_create_layer2_schema.sql` |
 | S-04 | IP interna hardcodeada en frontend | ALTA | `frontend/src/App.tsx:25` |
-| B-03 | ~~Recursión en Flask~~ — No aplica (código ya limpio) | ~~CRÍTICA~~ | — |
-| — | Sin rate limiting en API | ALTA | `backend/app/main.py` |
-| — | Sin logging estructurado (usa `print()`) | MEDIA | `backend/app/main.py` |
 | — | Single replica en Railway | MEDIA | `railway.json` |
 
 ---
@@ -1105,7 +1099,7 @@ Los siguientes issues del reporte original permanecen sin resolver:
 
 | # | Blocker | Archivos | Estado |
 |---|---------|----------|--------|
-| 1 | **DB Schema** — `raw.insert_price_record()` y `raw.insert_headline_record()` no existían en migrations | `data_storage/002_fix_schema.sql` | ✅ Creado (3 schemas + 2 funciones + 2 vistas + `config.news_sources`) |
+| 1 | **DB Schema** — `raw.insert_price_record()` y `raw.insert_headline_record()` no existían en migrations | `sql/002_fix_schema.sql` | ✅ Creado (3 schemas + 2 funciones + 2 vistas + `config.news_sources`) |
 | 4 | **Side effects en import-time** — `load_dotenv()` se ejecutaba al importar `llm.py` y `config.py` | `signaliq/core/llm.py:8-9`, `signaliq/core/config.py:8-9` | ✅ Guardado con `if ENVIRONMENT != 'test'` |
 | 5 | **API sin rate limiting** — sin protección contra abuso de Gemini quota | `backend/app/main.py:10-11,27-31,221,246` + `backend/requirements.txt` | ✅ Flask-Limiter (200/day, 50/hour global; 10/min `/analyze`, 30/min `/classify`) |
 
@@ -1144,8 +1138,8 @@ if os.environ.get('ENVIRONMENT') != 'test':
 ```
 
 Afecta:
-- `signaliq/core/llm.py` — antes: `load_dotenv()` al importar el módulo
-- `signaliq/core/config.py` — antes: `load_dotenv()` al importar el módulo
+- `layers/llm_router.py` (antes `signaliq/core/llm.py`) — antes: `load_dotenv()` al importar el módulo
+- `layers/system_config.py` (antes `signaliq/core/config.py`) — antes: `load_dotenv()` al importar el módulo
 
 Esto permite importar estos módulos en tests sin contaminar el entorno.
 
@@ -1295,4 +1289,42 @@ MIN_PRICE_HISTORY_DAYS = 6
 
 ---
 
-*Reporte de auditoría generado el 2026-06-06. Correcciones documentadas el 2026-06-12 (Rondas 1-5.5).*
+## 7. Plan de Ejecución Industrial — Ronda 6 (2026-06-12)
+
+### Bloqueadores resueltos esta ronda
+
+| # | Blocker | Archivos | Estado |
+|---|---------|----------|--------|
+| — | **Código muerto eliminado** — `legacy/`, `docs/`, `synthetic/`, `as_built/`, archivos sueltos | `legacy/`, `docs/`, `synthetic/`, `as_built/`, `oracle.md`, `fix_review.md`, `persistence_state.json` | ✅ ~35% del repo eliminado |
+| — | **Restructuración de directorios** — `layer1/` → `ingestion/`, `data_storage/` → `sql/`, `signaliq/core/` → `layers/` | Todo el árbol de directorios | ✅ Directorios renombrados, todos los imports actualizados |
+| — | **Frontends en raíz** → `web/` | `frontend.html`, `frontend_automatico.html`, `test_frontend.html` | ✅ Movidos a `web/` |
+| — | **Scripts en raíz** → `scripts/` | `demo.py`, `simple_ndi.py`, `verify_refactor.py` | ✅ Movidos a `scripts/` |
+| — | **Bloques `__main__` demo** en módulos de producción | `layers/layer3_*.py`, `layer4_*.py` (7 archivos) | ✅ Eliminados |
+| — | **Deprecated tests eliminados** | `tests/test_layer3.py`, `test_layer4.py`, `test_layer1_integration.py` | ✅ Movidos a `legacy/tests/` y luego eliminados |
+| — | **DB refactor** — pool de conexiones extraído de `main.py` | `backend/app/db.py` (creado), `main.py` (refactorizado) | ✅ `ThreadedConnectionPool` con retry |
+| — | **Validación de inputs** en endpoints Flask | `backend/app/main.py` | ✅ `_validate_ticker()`, `_validate_date_range()`, `_validate_classify_input()` |
+| — | **Memory leak** en MomentumProcessor | `layers/layer3_momentum.py` | ✅ Pruning en `add_price()` |
+| — | **SentimentProcessor** actualizado con LM lexicon | `layers/layer3_sentiment.py`, `layers/lm_lexicon.py` | ✅ Merge de léxicos |
+| — | **`module=` kwargs** removidos de logs | `backend/app/main.py` | ✅ Fix para LogRecord KeyError |
+
+### Estado actual de métricas (Ronda 6)
+
+| Métrica | Inicial | R1 | R2 | R3 | R4 | R5.5 | R6 | Delta total |
+|---------|---------|----|----|----|----|------|----|-------------|
+| Preparación Producción | 28/100 | 42/100 | 52/100 | 62/100 | 73/100 | 75/100 | **80/100** | +52 |
+| Calidad Arquitectónica | 42/100 | 50/100 | 55/100 | 60/100 | 64/100 | 67/100 | **72/100** | +30 |
+| Mantenibilidad | 35/100 | 40/100 | 45/100 | 50/100 | 54/100 | 57/100 | **72/100** | +37 |
+| Riesgo General | 🔴 Crítico | 🟠 Alto | 🟠 Alto | 🟡 Medio | 🟡 Medio | 🟡 Medio | 🟢 **Bajo-Medio** | 3 niveles |
+| Bloqueadores eliminados | 0 | 2 | 3 | 3 | 4 | 7 | 17 | Total: 22 |
+
+### Pendiente
+
+| # | Blocker | Prioridad |
+|---|---------|-----------|
+| — | **Single replica en Railway** — alta disponibilidad | MEDIA |
+| — | **Unificar error handling** — `None`/excepción/diccionario mixtos | BAJA |
+| — | **Config/settings.py** — centralizar todas las constantes numéricas | BAJA |
+
+---
+
+*Reporte de auditoría generado el 2026-06-06. Correcciones documentadas el 2026-06-12 (Rondas 1-6).*

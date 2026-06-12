@@ -1,21 +1,21 @@
-"""Layer 3 sentiment — inline word lists and daily z-score processor."""
+"""Layer 3 sentiment — Loughran-McDonald lexicon and daily z-score processor."""
 
 import math
 import re
-import sys
 from collections import deque
 from datetime import date
-from pathlib import Path
-
-if __name__ == "__main__" and __package__ is None:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from layers.layer3_config import CONFIG
+from layers.lm_lexicon import POSITIVE as LM_POSITIVE, NEGATIVE as LM_NEGATIVE
 
-POSITIVE_WORDS = {"surge", "gain", "rise", "beat", "up", "growth", "strong",
-                  "profit", "good", "upgrade", "positive", "outperform"}
-NEGATIVE_WORDS = {"fall", "drop", "miss", "decline", "down", "weak", "slump",
-                  "loss", "bad", "downgrade", "negative", "underperform"}
+# Merge LM lexicon with original hardcoded words for backward compatibility.
+# Original words not in LM: surge, gain, rise, beat, up, positive (positive);
+# fall, drop, miss, down, slump, bad, negative (negative).
+_OLD_POSITIVE = {"surge", "gain", "rise", "beat", "up", "positive"}
+_OLD_NEGATIVE = {"fall", "drop", "miss", "down", "slump", "bad", "negative"}
+
+POSITIVE_WORDS = LM_POSITIVE | _OLD_POSITIVE
+NEGATIVE_WORDS = LM_NEGATIVE | _OLD_NEGATIVE
 
 
 def polarity(text: str) -> float:
@@ -71,26 +71,3 @@ class SentimentProcessor:
     def get_history_length(self, ticker: str) -> int:
         return len(self._history.get(ticker, []))
 
-
-if __name__ == "__main__":
-    processor = SentimentProcessor()
-
-    print("=== SentimentProcessor Demo: FIRST Z-SCORE ON DAY 11 ===\n")
-
-    headline = "strong profit growth offsets weak quarterly loss"
-    raw = polarity(headline)
-    print(f"  headline: {headline}")
-    print(f"  raw polarity: {raw:+.4f}\n")
-
-    for day in range(1, 12):
-        dt = date(2026, 1, day)
-        daily_raw = 0.1 + 0.02 * day + (0.05 if day % 2 == 0 else -0.05)
-
-        processor.add_to_history("AAPL", dt, daily_raw)
-        z = processor.get_rolling_zscore("AAPL", dt, daily_raw)
-        hist_len = processor.get_history_length("AAPL")
-
-        print(f"  Day {day:2d}  | raw={daily_raw:+.4f}  | hist={hist_len:2d} prior  | z-score={z}")
-        print(f"           | (history count available for z-score: {sum(1 for d,_ in processor._history.get('AAPL',[]) if d < dt)})")
-
-    print("\n  → First z-score appears on Day 11 (10 prior observations)")

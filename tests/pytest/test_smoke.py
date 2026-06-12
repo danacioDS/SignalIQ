@@ -19,14 +19,14 @@ def test_import_layer4():
 
 @pytest.mark.smoke
 def test_import_config():
-    from signaliq.core.config import config
+    from layers.system_config import config
     assert hasattr(config, 'DATA_DIR')
     assert hasattr(config, 'db_url')
     assert hasattr(config, 'db')
 
 @pytest.mark.smoke
 def test_import_layer1():
-    from layer1.collect_prices import fetch_asset_price, normalize_price_response
+    from ingestion.collect_prices import fetch_asset_price, normalize_price_response
     assert callable(fetch_asset_price)
     assert callable(normalize_price_response)
 
