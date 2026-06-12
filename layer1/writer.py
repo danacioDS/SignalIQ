@@ -84,7 +84,7 @@ def write_headline(conn, source_id: int, record: dict, ingestion_run_id: str):
             result = cur.fetchone()[0]
             return result
     except psycopg2.UniqueViolation:
-        # Rollback is not needed for news (no transaction)
+        conn.rollback()
         logger.warning("Duplicate headline for URL: %s", record.get("article_url"))
         return None
     except Exception as e:

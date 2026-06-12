@@ -22,7 +22,7 @@ interface MarketSummary {
   market_regime: string;
 }
 
-const API_URL = 'http://163.176.128.135:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:10000';
 
 function App() {
   const [signals, setSignals] = useState<Signal[]>([]);

@@ -176,7 +176,7 @@ def fetch_news(source_filter: Optional[str] = None) -> dict[str, list[dict]]:
 
     if not result:
         logger.critical("All %d feeds failed to fetch", len(sources_to_fetch))
-        sys.exit(1)
+        raise Exception(f"All {len(sources_to_fetch)} feeds failed")
 
     return result
 

@@ -1,24 +1,69 @@
-"""SignalIQ API"""
+"""SignalIQ API - Production Hardened"""
 
 print("=" * 60)
-print("SIGNALIQ BUILD 2026-06-07")
+print("SIGNALIQ BUILD 2026-06-12")
 print("FILE:", __file__)
 print("=" * 60)
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from datetime import datetime
 import os
 import psycopg2
+import psycopg2.extras
 import urllib.parse
 import google.generativeai as genai
 
 from app.scoring.signal_score import SignalIQScore
 from app.classification.event_classifier import EventClassifier
 
+# ============================================================
+# STRUCTURED LOGGING (additive, prints preserved)
+# ============================================================
+import logging
+import json
+
+USE_JSON_LOGS = os.environ.get('USE_JSON_LOGS', 'true').lower() == 'true'
+
+class JSONFormatter(logging.Formatter):
+    def format(self, record):
+        return json.dumps({
+            'timestamp': datetime.utcnow().isoformat(),
+            'level': record.levelname,
+            'name': record.name,
+            'message': record.getMessage(),
+            'module': record.module
+        })
+
+_logger = logging.getLogger(__name__)
+_handler = logging.StreamHandler()
+_handler.setFormatter(JSONFormatter())
+_logger.addHandler(_handler)
+_logger.setLevel(logging.INFO)
+
+def log_info(msg, **kwargs):
+    if USE_JSON_LOGS:
+        _logger.info(msg, extra=kwargs)
+    print(f"[INFO] {msg}")
+
+def log_error(msg, **kwargs):
+    if USE_JSON_LOGS:
+        _logger.error(msg, extra=kwargs)
+    print(f"[ERROR] {msg}")
+
 app = Flask(__name__)
-print("🚀 SIGNALIQ MAIN.PY LOADED 🚀")
+log_info("SignalIQ main.py loaded", event="startup")
 CORS(app)
+
+redis_url = os.environ.get('REDIS_URL')
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri=redis_url or "memory://"
+)
 
 # ============================================================
 # INIT
@@ -57,12 +102,12 @@ if api_key:
         model = genai.GenerativeModel("gemini-2.0-flash")
         print("✅ Gemini initialized")
     except Exception as e:
-        print("❌ Gemini error:", e)
+        log_error(f"Gemini error: {e}", module="gemini")
 else:
     print("❌ Gemini key missing")
 
 # ============================================================
-# DB (FIX DEFINITIVO RENDER)
+# DB CONNECTION (CONTRACT FIX)
 # ============================================================
 
 def get_db():
@@ -71,45 +116,44 @@ def get_db():
     if not db_url:
         raise Exception("DATABASE_URL missing")
 
+    # Limpiar espacios y saltos de línea
+    db_url = db_url.strip()
+
     # Render compatibility
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-    url = urllib.parse.urlparse(db_url)
+    print(f"DB URL (clean): {db_url[:50]}...")
 
     return psycopg2.connect(
-        dbname=url.path.lstrip("/"),
-        user=url.username,
-        password=url.password,
-        host=url.hostname,
-        port=url.port or 5432,
+        db_url,
         sslmode="require"
     )
+
 print("DATABASE_URL RAW:", repr(os.environ.get("DATABASE_URL")))
+
 # ============================================================
-# ROUTES
+# API ROUTES (TODAS VAN PRIMERO)
 # ============================================================
 
-@app.route("/")
-def root():
-    return "SignalIQ backend running"
-
-@app.route("/version")
-def version():
-    return jsonify({
-        "service": "SignalIQ",
-        "version": "2026-06-07"
-    })
-
-@app.route("/health")
-def health():
+@app.route("/api/health")
+def api_health():
     return jsonify({
         "status": "ok",
-        "mode": "REAL" if model else "MOCK"
+        "mode": "REAL" if model else "MOCK",
+        "timestamp": datetime.now().isoformat()
+    })
+
+@app.route("/api/version")
+def api_version():
+    return jsonify({
+        "service": "SignalIQ",
+        "version": "2026-06-12",
+        "build": "production_hardening"
     })
 
 @app.route("/api/stats")
-def stats():
+def api_stats():
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -140,10 +184,11 @@ def stats():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/signals")
-def signals():
+def api_signals():
     try:
         conn = get_db()
-        cur = conn.cursor()
+        # CRÍTICO: RealDictCursor para devolver objetos, no arrays
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         cur.execute("""
             SELECT ticker, score, signal, strength, explanation,
@@ -156,6 +201,11 @@ def signals():
         rows = cur.fetchall()
         conn.close()
 
+        # Convertir fechas a string ISO para JSON
+        for row in rows:
+            if row.get('created_at'):
+                row['created_at'] = row['created_at'].isoformat()
+
         return jsonify({
             "success": True,
             "count": len(rows),
@@ -165,8 +215,70 @@ def signals():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/analyze/<ticker>")
-def analyze(ticker):
+@app.route("/api/score/<ticker>")
+def api_score(ticker):
+    """Endpoint para score individual de un ticker"""
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute("""
+            SELECT ticker, score, signal, strength, explanation,
+                   price_at_signal, created_at
+            FROM signal_predictions
+            WHERE ticker = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, (ticker.upper(),))
+
+        row = cur.fetchone()
+        conn.close()
+
+        if row:
+            if row.get('created_at'):
+                row['created_at'] = row['created_at'].isoformat()
+
+            return jsonify({
+                "success": True,
+                "signal": row
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": f"No signal found for {ticker}"
+            }), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/classify", methods=["POST"])
+@limiter.limit("30 per minute")
+def api_classify():
+    try:
+        data = request.get_json() or {}
+
+        result = event_classifier.classify(
+            data.get("title", ""),
+            data.get("content", "")
+        )
+
+        return jsonify({
+            "success": True,
+            "classification": result
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/routes")
+def api_routes():
+    return jsonify({
+        "routes": sorted([str(r) for r in app.url_map.iter_rules() if r.rule.startswith('/api')])
+    })
+
+@app.route("/api/analyze/<ticker>")
+@limiter.limit("10 per minute")
+def api_analyze(ticker):
     if not model:
         return jsonify({"error": "Gemini not configured"}), 500
 
@@ -196,41 +308,23 @@ def analyze(ticker):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/classify", methods=["POST"])
-def classify():
-    try:
-        data = request.get_json() or {}
-
-        result = event_classifier.classify(
-            data.get("title", ""),
-            data.get("content", "")
-        )
-
-        return jsonify({
-            "success": True,
-            "classification": result
-        })
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/routes")
-def routes():
-    return jsonify({
-        "routes": sorted([str(r) for r in app.url_map.iter_rules()])
-    })
-
 # ============================================================
-# FRONTEND
+# FRONTEND (VA AL FINAL, DESPUÉS DE TODAS LAS API ROUTES)
 # ============================================================
+
+@app.route("/")
+def frontend_root():
+    return send_from_directory(static_dir, "index.html")
 
 @app.route("/<path:path>")
-def frontend(path):
+def frontend_catchall(path):
+    """Sirve archivos estáticos o index.html para React routing"""
     file_path = os.path.join(static_dir, path)
 
-    if path and os.path.exists(file_path):
+    if os.path.exists(file_path) and os.path.isfile(file_path):
         return send_from_directory(static_dir, path)
 
+    # Para rutas de React como /ticker/NVDA
     return send_from_directory(static_dir, "index.html")
 
 # ============================================================
@@ -240,31 +334,15 @@ def frontend(path):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
 
+    print("\n" + "=" * 60)
+    print("🚀 SIGNALIQ PRODUCTION SERVER")
+    print("=" * 60)
+    print(f"📍 Port: {port}")
+    print(f"📁 Static dir: {static_dir}")
+    print(f"🔧 Mode: {'REAL' if model else 'MOCK'}")
+    print("=" * 60 + "\n")
+
     app.run(
         host="0.0.0.0",
         port=port
-    )
-def get_db():
-    import os
-    import psycopg2
-    
-    db_url = os.environ.get("DATABASE_URL")
-    
-    if not db_url:
-        raise Exception("DATABASE_URL missing")
-    
-    # Limpiar espacios y saltos de línea invisibles
-    db_url = db_url.strip()
-    
-    # Render compatibility: convertir postgres:// a postgresql://
-    if db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql://", 1)
-    
-    # Debug: ver la URL limpia (para logs)
-    print(f"DB URL (clean): {db_url[:50]}...")
-    
-    # Conexión directa con sslmode
-    return psycopg2.connect(
-        db_url,
-        sslmode="require"
     )

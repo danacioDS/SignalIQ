@@ -1,4 +1,9 @@
-"""Integration test suite for SignalIQ Layer 4 (all sublayers)."""
+"""
+DEPRECATED: This test file will be removed after 2026-06-19.
+Use `pytest tests/pytest/ -m smoke` as the single source of truth.
+
+Integration test suite for SignalIQ Layer 4 (all sublayers).
+"""
 
 import json
 import os

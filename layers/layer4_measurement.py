@@ -1,5 +1,7 @@
 """Sublayer 4A: Measurement — validity gate, NDI, and 5-day return."""
 
+from config.thresholds import MIN_PRICE_HISTORY_DAYS
+
 VALIDITY_STATE = ["VALID", "INVALID_INPUT", "INSUFFICIENT_PRICE_HISTORY"]
 
 
@@ -16,15 +18,17 @@ def validate_input(sentiment_zscore, momentum_zscore, price_history):
         return ("INVALID_INPUT", "sentiment is None")
     if momentum_zscore is None:
         return ("INVALID_INPUT", "momentum is None")
-    if len(price_history) < 6:
+    if price_history is None:
+        return ("INVALID_INPUT", "price_history is None")
+    if len(price_history) < MIN_PRICE_HISTORY_DAYS:
         return (
             "INSUFFICIENT_PRICE_HISTORY",
-            f"need 6 prices, got {len(price_history)}",
+            f"need {MIN_PRICE_HISTORY_DAYS} prices, got {len(price_history)}",
         )
     return ("VALID", None)
 
 
-def calculate_ndi(sentiment_zscore, momentum_zscore):
+def calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore):
     """Net Divergence Index = sentiment_zscore - momentum_zscore.
 
     Returns None when either input is None.
@@ -32,6 +36,9 @@ def calculate_ndi(sentiment_zscore, momentum_zscore):
     if sentiment_zscore is None or momentum_zscore is None:
         return None
     return sentiment_zscore - momentum_zscore
+
+# Backwards compatibility alias
+calculate_ndi = calculate_narrative_divergence_index
 
 
 def calculate_5d_return(price_history):
