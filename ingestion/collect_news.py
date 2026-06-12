@@ -10,7 +10,7 @@ from typing import Optional
 import feedparser
 import requests
 
-from layer1.http_client import fetch_with_retry
+from ingestion.http_client import fetch_with_retry
 
 logger = logging.getLogger(__name__)
 

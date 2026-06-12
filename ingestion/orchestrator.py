@@ -8,9 +8,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from layer1.collect_news import fetch_news
-from layer1.collect_prices import fetch_prices
-from layer1.writer import get_connection, get_source_id, write_headline, write_price
+from ingestion.collect_news import fetch_news
+from ingestion.collect_prices import fetch_prices
+from ingestion.writer import get_connection, get_source_id, write_headline, write_price
 
 logger = logging.getLogger(__name__)
 

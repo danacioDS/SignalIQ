@@ -43,27 +43,23 @@ When narrative runs ahead of price action, SignalIQ flags it as exhaustion, dist
 repo root/
 ├── architecture.md                         # This file — system map
 ├── README.md                               # Repo readme
-├── demo.py                                 # End-to-end synthetic demo (stdlib only)
 ├── api_signaliq.py                         # Flask REST API (/analyze, /batch, /summary, /health)
-├── simple_ndi.py                           # Simplified NDI signal generator (std lib + psycopg2)
 ├── signals_demo.csv                        # Demo signal output
-├── dashboard.html                          # Dark-themed institutional dashboard
-├── dashboard_old.html                      # Older dashboard version
-├── frontend_test.html                      # Simple API test UI
-├── fix_review.md                           # Code review & fix notes
-├── oracle.md                               # Remote server access note
 ├── .env.example                            # DATABASE_URL template
 ├── .gitignore                              # Git ignore rules
 ├── pytest.ini                              # Pytest config (smoke/integration/slow markers)
 ├── requirements_test.txt                   # Pytest dependencies
 ├── requirements_layer1.txt                 # Layer 1 dependencies (psycopg2-binary, requests, feedparser)
-├── persistence_state.json                  # Runtime state (in .gitignore)
 ├── workflow.md                             # Development workflow
 │
-├── legacy/                                 # DEPRECATED code (scheduled removal 2026-06-19)
-│   └── README.md                           # Deprecation notice + removal checklist
+├── backend/                                # Flask backend (Layer 4 API server)
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py                         # CORS Flask API (port 10000) + rate limiting
+│   │   └── db.py                           # ThreadedConnectionPool for PostgreSQL
+│   └── requirements.txt
 │
-├── layer1/                                 # Layer 1 — Data Ingestion (5 modules)
+├── ingestion/                              # Layer 1 — Data Ingestion (5 modules)
 │   ├── __init__.py
 │   ├── http_client.py                      # Shared HTTP with retry (fetch_with_retry)
 │   ├── collect_prices.py                   # Yahoo Finance OHLCV (5 assets)
@@ -82,90 +78,59 @@ repo root/
 │   ├── layer4_measurement.py               # L4 validity gate, NDI, 5-day return
 │   ├── layer4_persistence.py               # L4 streak tracking, stale-gap, signal state
 │   ├── layer4_classification.py            # L4 confidence, price pressure, risk, attention
-│   ├── layer4_orchestrator.py              # L4 9-step pipeline, batch processing, LLM integration, functional API (process_asset, process_batch)
+│   ├── layer4_orchestrator.py              # L4 9-step pipeline, batch processing, LLM integration
+│   ├── system_config.py                    # SignalIQConfig singleton
+│   ├── llm_router.py                       # LLMRouter (Gemini, GLM, Groq, MOCK)
 │   ├── integration.py                      # L1→L3→L4 pipeline integration entry point
-│   ├── signal_analyzer.py                  # LLM analysis helper
 │   └── fundamental/                        # Layer 5 — Fundamental Analysis (3 modules)
 │       ├── __init__.py
 │       ├── fundamental_engine.py           # Main engine: processes metrics, caches results
 │       ├── metrics_calculator.py           # Valuation ratios, growth, profitability, cash flow
 │       └── score_aggregator.py             # Sector-benchmarked scoring (0–100)
 │
-├── signaliq/                               # AI/LLM runtime
-│   └── core/
-│       ├── config.py                       # Singleton config, LLM provider selection, Data_dir, db.url
-│       ├── llm.py                          # LLMRouter (Gemini, GLM, Groq, MOCK)
-│       └── persistence.py                  # PostgreSQL + JSON state persistence
-│
 ├── frontend/                               # Layer 6 — React TypeScript UI
 │   ├── public/
 │   ├── src/
-│   │   ├── App.tsx                         # KPI cards, signal table, NDI bar chart
-│   │   ├── App.css
-│   │   └── index.tsx
-│   ├── package.json                        # React 19, Recharts 3.8, Axios, Tailwind
-│   ├── tsconfig.json
-│   └── tailwind.config.js
+│   │   └── App.tsx                         # KPI cards, signal table, NDI bar chart
+│   ├── package.json
+│   └── tsconfig.json
 │
-├── data_storage/                           # Layer 2 — SQL migrations (5 files)
+├── sql/                                    # Layer 2 — SQL migrations (6 files)
 │   ├── 001_create_layer2_schema.sql        # Core schema (61 lines)
 │   ├── 002_fix_schema.sql                  # raw schema, wrapper functions, config tables
+│   ├── 003_create_signal_tables.sql        # Signal classification tables
 │   ├── master_build.sql                    # Transactional build wrapper
 │   ├── rollback.sql                        # Complete teardown
 │   └── test_queries.sql                    # 24 validation queries
 │
-├── scripts/                                # Operations & analysis scripts
+├── scripts/                                # Operations scripts
 │   ├── install_crontab.sh                  # Idempotent cron installer
 │   ├── rotate_logs.sh                      # Daily rotation, 90-day retention
+│   ├── daily.sh                            # Daily pipeline (collect → analyze → signal)
 │   ├── backtest_engine.py                  # NDI backtesting engine (pandas/numpy)
 │   ├── backtest_improved.py                # Enhanced backtesting with metrics
-│   └── run_backtest_real.py                # Production backtest runner
+│   ├── run_backtest_real.py                # Production backtest runner
+│   ├── demo.py                             # End-to-end synthetic demo (stdlib only)
+│   ├── simple_ndi.py                       # Simplified NDI signal generator
+│   └── verify_refactor.py                  # Structural verification script
+│
+├── web/                                    # Standalone HTML dashboards
+│   ├── index.html                          # Dark-themed institutional dashboard
+│   ├── automatico.html                     # Automated dashboard
+│   └── test.html                           # Simple API test UI
 │
 ├── config/                                 # Configuration files
-│   ├── thresholds.py                       # Production-critical thresholds (5 constants)
+│   ├── thresholds.py                       # Production-critical thresholds
 │   └── entity_aliases.json                 # Alias entries for Layer 3 (5 tickers)
 │
 ├── tests/                                  # Official test suite
 │   ├── __init__.py
 │   ├── pytest/                             # Pytest tests (single source of truth)
-│   │   ├── test_smoke.py                   # 4 smoke tests: Layer4, Config, Layer1, API (always run)
-│   │   ├── test_architecture.py            # 4 architecture invariants tests (always run)
+│   │   ├── test_smoke.py                   # 4 smoke tests: Layer4, Config, Layer1, API
+│   │   ├── test_architecture.py            # 4 architecture invariants tests
 │   │   ├── test_db_contract.py             # DB migration and schema tests (integration)
 │   │   └── test_integration.py             # Full system integration test (integration)
-│   ├── test_layer1_integration.py          # 15 L1 tests (61 checks) — DEPRECATED
-│   ├── test_layer3.py                      # 16 L3 tests (100+ checks) — DEPRECATED
-│   ├── test_layer4.py                      # 15 L4 tests (80+ checks) — DEPRECATED
-│   └── test_fundamental_engine.py          # Fundamental engine smoke test
-│
-├── root test scripts/                      # Ad-hoc test scripts
-│   ├── test_batch.py, test_gemini_correct.py, test_gemini_fixed.py
-│   ├── test_high_confidence.py, test_l4_integration.py
-│   ├── test_llm.py, test_llm_mock.py, test_mock.py
-│   └── test_orchestrator.py
-│
-├── synthetic/                              # Test data generation
-│   └── data_generator.py                   # Synthetic price + headline generator
-│
-├── docs/                                   # ALL documentation
-│   ├── production_specification/           # Production architecture specs
-│   │   ├── system_architecture.md          # Full 6-layer system diagram
-│   │   ├── Layer_01_arch.md through Layer_04_arch.md
-│   ├── hld/                                # High-Level Design (8 docs)
-│   │   ├── Layer_01.md through Layer_04.md
-│   │   ├── SignalIQ_mvp_plan.md / _uni_exec.md
-│   │   ├── product_engineering.md / _expectations.md
-│   ├── lld/                                # Low-Level Design (4 docs)
-│   │   ├── SignalIQ_layer_01.md through _04.md
-│   ├── conceptual/                         # Theory & strategy (6 docs)
-│   │   ├── 01_commercial_pitch.md through 06_operational_strategy.md
-│   └── prompts/                            # Development prompts (4 docs)
-│       ├── prompts_layer_01.md through _04.md
-│
-├── as_built/                               # Build transcripts
-│   ├── transcript_layer_01.md through _04.md
-│   ├── overall_transcript.md               # Full project development history
-│   ├── Claude_opinion.md                   # Code review notes
-│   └── as_built.md                         # Build summary
+│   └── __init__.py
 │
 └── logs/                                   # Runtime logs (in .gitignore)
     └── ingestion.log
@@ -176,7 +141,7 @@ repo root/
 ## Status
 
 ### Layer 1 — Data Ingestion
-- **5 Python modules** in `layer1/`: `http_client.py`, `collect_prices.py`, `collect_news.py`, `writer.py`, `orchestrator.py`
+- **5 Python modules** in `ingestion/`: `http_client.py`, `collect_prices.py`, `collect_news.py`, `writer.py`, `orchestrator.py`
 - Built from corrected v2.0 spec: resolved transaction model, lock race, unicode normalization, author resolution, empty headline observability, named SQL params
 - **15 integration tests** (61 checks) — all pass
 - Yahoo Finance OHLCV for 5 assets (NVDA, AAPL, MSFT, SPX, BTC-USD)
@@ -194,7 +159,7 @@ repo root/
 - `write_headline()` rolls back on `UniqueViolation` — prevents aborted transactions from breaking batch
 
 ### Layer 2 — PostgreSQL Persistence
-- **5 migration files** in `data_storage/`: schema (`001_`), raw functions (`002_`), build, rollback, test
+- **6 migration files** in `sql/`: schema (`001_`), raw functions (`002_`), signal tables (`003_`), build, rollback, test
 - `002_fix_schema.sql` creates `raw` schema, `raw.insert_price_record()`, `raw.insert_headline_record()`, `config.news_sources`, views `raw.prices` and `raw.news_headlines` — bridges writer.py calls to `public.prices` and `public.headlines`
 - **10 tables**, **2 views**, **13 functions**, **6 triggers**, **4 roles**
 - Schema: `raw` (prices, news_headlines), `ops` (ingestion_runs, ingestion_health), `config` (monitored_assets, asset_aliases, news_sources)
@@ -236,14 +201,13 @@ repo root/
 - Produces 0–100 fundamental score with quality rating (Excellent / Good / Fair / Poor / Distressed)
 - Integrated with Layer 4 via `process_signal()` — fundamental score acts as overlay on NDI
 - Example fundamentals provided for NVDA, AAPL, MSFT
-- **1 test** (`test_fundamental_engine.py`) — smoke test with example data
 - Depends on `numpy` (not stdlib only)
 
 ### L3→L4 Pipeline
-- `Layer3Orchestrator` + `layer4.process_batch()` wired in `demo.py`
+- `Layer3Orchestrator` + `layer4.process_batch()` wired in `scripts/demo.py`
 - `layers/integration.py` provides consolidated `run_pipeline()` entry point
 - End-to-end 20-day synthetic data verification — all tests pass
-- Demo: `python demo.py` (stdlib only)
+- Demo: `python scripts/demo.py` (stdlib only)
 
 ### Layer 5→L4 Integration (Fundamental)
 - `Layer4Orchestrator.process_signal()` accepts optional `fundamental_data` parameter
@@ -251,7 +215,7 @@ repo root/
 - Bubble Risk Score merges narrative, technical, and fundamental dimensions
 
 ### AI / LLM Router
-- **3 modules** in `signaliq/core/`: `config.py`, `llm.py`, `persistence.py`
+- **2 modules** in `layers/`: `system_config.py`, `llm_router.py` (moved from `signaliq/core/`)
 - `LLMRouter` singleton — supports **Gemini**, **GLM (ZhipuAI)**, **Groq**, and **MOCK** mode
 - Primary LLM configured via `PRIMARY_LLM` env var from `.env` (no hardcoded keys in source)
 - Fallback chain: primary → fallback (Groq) → MOCK
@@ -259,7 +223,6 @@ repo root/
 - `load_dotenv()` guarded by `ENVIRONMENT != 'test'` — no side effects in test imports
 - `api_signaliq.py` — Flask REST API (4 endpoints: `/health`, `/analyze`, `/batch`, `/summary`)
 - `backend/app/main.py` — CORS-enabled Flask API on port 10000 with rate limiting (Flask-Limiter: 200/day, 50/hour global; 10/min `/analyze`, 30/min `/classify`) and structured logging (`log_info`/`log_error` with JSON output toggle via `USE_JSON_LOGS` env var)
-- `layers/signal_analyzer.py` — helper module for LLM analysis calls
 
 ### Frontend (Layer 6 — Partial)
 - **React TypeScript** app in `frontend/` — Create React App + Recharts 3.8 + Axios + Tailwind CSS
@@ -268,7 +231,7 @@ repo root/
 - NDI distribution bar chart
 - Connects to remote API via `REACT_APP_API_URL` env var (default: `http://localhost:10000`)
 - Env files: `.env.production` (Render URL) and `.env.development` (localhost)
-- **HTML alternatives**: `dashboard.html` (dark-themed institutional), `frontend_test.html` (API test UI)
+- **HTML alternatives**: `web/index.html` (dark-themed institutional), `web/test.html` (API test UI), `web/automatico.html` (automated dashboard)
 - Not yet production-deployed
 
 ### Not started
@@ -280,7 +243,7 @@ repo root/
 ## Architecture
 
 ```
-  Yahoo Finance ──→ layer1 ──→ data_storage ──→ layers/layer3_* ──→ layers/layer4_* ──→ signaliq/core ──→ frontend/
+  Yahoo Finance ──→ ingestion ──→ sql ──→ layers/layer3_* ──→ layers/layer4_* ──→ layers/llm_router ──→ frontend/
                      prices      raw.prices         sentiment            signal state         LLM Router       React UI
   6 RSS Feeds  ──→  news        raw.news_headlines  momentum             persistence           Flask API       Dashboards
                      http_client ops.ingestion_runs  entity resolution    classification        Gemini / GLM
@@ -306,52 +269,50 @@ Fundamental analysis acts as an overlay on the NDI signal, adjusting risk and co
 
 ```bash
 # Layer 1 — price collection
-python -m layer1.collect_prices
-python -m layer1.collect_prices --dry-run
+python -m ingestion.collect_prices
+python -m ingestion.collect_prices --dry-run
 
 # Layer 1 — news collection
-python -m layer1.collect_news
-python -m layer1.collect_news --source reuters
-python -m layer1.collect_news --dry-run
+python -m ingestion.collect_news
+python -m ingestion.collect_news --source reuters
+python -m ingestion.collect_news --dry-run
 
 # Layer 1 — orchestrator (cron entry point)
-python -m layer1.orchestrator --type both
-python -m layer1.orchestrator --type prices
-python -m layer1.orchestrator --type news
-python -m layer1.orchestrator --type news --source reuters --dry-run
+python -m ingestion.orchestrator --type both
+python -m ingestion.orchestrator --type prices
+python -m ingestion.orchestrator --type news
+python -m ingestion.orchestrator --type news --source reuters --dry-run
 
 # Layer 2 — build database
-psql $DATABASE_URL -f data_storage/master_build.sql
-psql $DATABASE_URL -f data_storage/002_fix_schema.sql   # raw schema + wrapper functions
-psql $DATABASE_URL -f data_storage/test_queries.sql
+psql $DATABASE_URL -f sql/master_build.sql
+psql $DATABASE_URL -f sql/002_fix_schema.sql   # raw schema + wrapper functions
+psql $DATABASE_URL -f sql/test_queries.sql
 
 # Test suite (pytest is the single source of truth)
 pytest tests/pytest/ -m "not integration" -v  # 8 tests (4 smoke + 4 architecture, no externals)
 pytest tests/pytest/ -m integration -v        # DB contract + integration (requires DB/API running)
-python -m tests.test_layer1_integration     # 15 tests, 61 checks (DEPRECATED)
-python -m tests.test_layer3                 # 16 tests, 100+ checks (DEPRECATED)
-python -m tests.test_layer4                 # 15 tests, 80+ checks (DEPRECATED)
 
 # Layer 5 — fundamental analysis
 python -m tests.test_fundamental_engine   # Smoke test with examples
 
-# AI / LLM
-python -m tests.test_llm                  # LLM Router test
-python -m tests.test_gemini_correct       # Gemini integration test
+# Backend API server
 python api_signaliq.py                    # Start Flask API (port 5000)
 
 # Frontend
 cd frontend && npm start                  # Start React dev server
 
-# Simplified NDI generation
-python simple_ndi.py
-
 # End-to-end demo
-python demo.py
+python scripts/demo.py
 
 # Backtesting
 python scripts/backtest_engine.py
 python scripts/run_backtest_real.py
+
+# Simplified NDI generation
+python scripts/simple_ndi.py
+
+# Verify project structure
+python scripts/verify_refactor.py
 
 # Install cron jobs
 ./scripts/install_crontab.sh
@@ -360,27 +321,23 @@ python scripts/run_backtest_real.py
 ---
 
 ## Notes
-- `persistence_state.json` stays at repo root (runtime state, in .gitignore)
-- Transcripts stay in `as_built/` (stable reference)
-- `docs/production_specification/` has authoritative architecture docs
-- `config/entity_aliases.json` consumed by Layer 3 EntityResolver; `config/thresholds.py` provides `MIN_PRICE_HISTORY_DAYS`, `NDI_ACTIVE_THRESHOLD`, `NDI_STRONG_THRESHOLD`, `NDI_FLAT_PRICE_THRESHOLD`, `PRICE_CHANGE_THRESHOLD` — single source of truth for thresholds
+- `config/entity_aliases.json` consumed by Layer 3 EntityResolver; `config/thresholds.py` provides `MIN_PRICE_HISTORY_DAYS` — single source of truth for thresholds
 - Layer 1 installs no cron jobs automatically — run `scripts/install_crontab.sh`
 - All tests mock external dependencies — no network or database required
-- Pytest smoke + architecture tests are the single source of truth: `pytest tests/pytest/ -m "not integration" -v` (8 tests: Layer4, Config, Layer1, API, 4 architecture invariants)
-- Legacy test files (`test_layer1_integration.py`, `test_layer3.py`, `test_layer4.py`) marked DEPRECATED, scheduled for removal 2026-06-19
+- Pytest is the single source of truth: `pytest tests/pytest/ -m "not integration" -v` (8 tests: Layer4, Config, Layer1, API, 4 architecture invariants)
 - `layers/lm_lexicon.py` is the canonical Loughran-McDonald lexicon source (558 words, 6 categories, imported by `layer3_sentiment.py`)
 - `layers/__init__.py` exports `score_text`, `net_sentiment`, `run_pipeline`, and `run_batch_pipeline` as the public API
-- `signaliq/core/llm.py` provides the `LLMRouter` singleton — set `PRIMARY_LLM=gemini` (or `glm`, `groq`, `mock`) in `.env` (no hardcoded API keys in source code)
+- `layers/llm_router.py` provides the `LLMRouter` singleton — set `PRIMARY_LLM=gemini` (or `glm`, `groq`, `mock`) in `.env` (no hardcoded API keys in source code)
 - `docker-compose.yml` reads API keys from `.env` via `${VAR:-}` references — never hardcoded
-- `signaliq/core/config.py` exposes `DATA_DIR`, `db` (with `.url`), `db_url`, and all LLM provider settings — all config from environment
+- `layers/system_config.py` exposes `DATA_DIR`, `db` (with `.url`), `db_url`, and all LLM provider settings — all config from environment
 - No `sys.exit()` in library code — exceptions propagate to callers for graceful handling
-- `load_dotenv()` guarded by `ENVIRONMENT != 'test'` in `llm.py` and `config.py` — prevents side effects during test imports
-- API rate limiting via Flask-Limiter: Redis required in production (`REDIS_URL`), memory fallback for dev; 10 req/min on `/api/analyze`, 30 req/min on `/api/classify`
-- Structured logging in `backend/app/main.py`: `log_info()`/`log_error()` with JSON output, toggle via `USE_JSON_LOGS` env var; prints preserved for compatibility
-- `layer4_orchestrator_simple.py` deleted (was marked DEPRECATED; zero active imports). Only `layers.layer4_orchestrator` remains.
-- `calculate_narrative_divergence_index()` is the canonical NDI function in `layer4_measurement.py:43`; `calculate_ndi` retained as backwards-compatible alias
+- `load_dotenv()` guarded by `ENVIRONMENT != 'test'` in `llm_router.py` and `system_config.py` — prevents side effects during test imports
+- API rate limiting via Flask-Limiter (memory fallback for dev); 10 req/min on `/api/analyze`, 30 req/min on `/api/classify`
+- Structured logging in `backend/app/main.py`: `log_info()`/`log_error()` with JSON output toggle via `USE_JSON_LOGS`
+- `layer4_orchestrator_simple.py` deleted — only `layers.layer4_orchestrator` remains
+- `calculate_narrative_divergence_index()` is the canonical NDI function in `layer4_measurement.py`
 - Architecture invariants enforced by `test_architecture.py` (4 tests: single orchestrator, no circular imports, consistent NDI formula, zero `sys.exit`)
 - `config/thresholds.py` holds all production thresholds — edit there instead of inlining numbers
 - Fundamental engine requires `numpy`; all other layers remain stdlib-only
 - `frontend/` is a Create React App — run `npm install && npm start` from `frontend/` to launch
-- `api_signaliq.py` runs a Flask server on port 5000 — start it before using `frontend_test.html`
+- `api_signaliq.py` runs a Flask server on port 5000; `backend/app/main.py` on port 10000

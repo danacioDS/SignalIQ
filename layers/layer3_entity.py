@@ -47,27 +47,3 @@ class EntityResolver:
     def get_all_tickers(self) -> list[str]:
         return sorted(self._ticker_to_aliases)
 
-
-if __name__ == "__main__":
-    resolver = EntityResolver(min_alias_length=3)
-
-    print("=== EntityResolver Demo ===\n")
-
-    print("resolve_by_url_param('AAPL') →", resolver.resolve_by_url_param("AAPL"))
-    print("resolve_by_url_param('UNKNOWN') →", resolver.resolve_by_url_param("UNKNOWN"))
-    print()
-
-    samples = [
-        "apple stock rises on strong earnings",
-        "microsoft and nvidia announce partnership",
-        "google parent alphabet beats estimates",
-    ]
-
-    for text in samples:
-        norm = normalize_headline(text)
-        tickers = resolver.resolve_by_alias(norm)
-        print(f"  headline: {text}")
-        print(f"  norm:     {norm}")
-        print(f"  tickers:  {tickers}\n")
-
-    print("All known tickers:", resolver.get_all_tickers())

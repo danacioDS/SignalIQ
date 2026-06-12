@@ -11,13 +11,11 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from datetime import datetime
 import os
-import psycopg2
-import psycopg2.extras
-import urllib.parse
 import google.generativeai as genai
 
 from app.scoring.signal_score import SignalIQScore
 from app.classification.event_classifier import EventClassifier
+from app.db import init_pool, close_pool, execute_query, execute_query_one, get_connection, put_connection
 
 # ============================================================
 # STRUCTURED LOGGING (additive, prints preserved)
@@ -102,38 +100,103 @@ if api_key:
         model = genai.GenerativeModel("gemini-2.0-flash")
         print("✅ Gemini initialized")
     except Exception as e:
-        log_error(f"Gemini error: {e}", module="gemini")
+        log_error(f"Gemini error: {e}")
 else:
     print("❌ Gemini key missing")
 
 # ============================================================
-# DB CONNECTION (CONTRACT FIX)
+# DB CONNECTION POOL
 # ============================================================
 
-def get_db():
-    db_url = os.environ.get("DATABASE_URL")
-
-    if not db_url:
-        raise Exception("DATABASE_URL missing")
-
-    # Limpiar espacios y saltos de línea
-    db_url = db_url.strip()
-
-    # Render compatibility
-    if db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql://", 1)
-
-    print(f"DB URL (clean): {db_url[:50]}...")
-
-    return psycopg2.connect(
-        db_url,
-        sslmode="require"
-    )
-
-print("DATABASE_URL RAW:", repr(os.environ.get("DATABASE_URL")))
+if os.environ.get("DATABASE_URL"):
+    try:
+        init_pool()
+        log_info("Database pool initialised")
+    except Exception as e:
+        log_error(f"Database pool init failed: {e}")
 
 # ============================================================
-# API ROUTES (TODAS VAN PRIMERO)
+# INPUT VALIDATION
+# ============================================================
+
+import re as _re
+
+_TICKER_RE = _re.compile(r"^[A-Z0-9-]{1,10}$")
+_MAX_TICKER_LEN = 10
+
+
+def _validate_ticker(ticker: str) -> str | None:
+    """Validate and normalise a ticker symbol.
+
+    Returns the uppercased ticker on success, or an error message on failure.
+    """
+    if not ticker or not ticker.strip():
+        return "Ticker symbol is required"
+    cleaned = ticker.strip().upper()
+    if len(cleaned) > _MAX_TICKER_LEN:
+        return f"Ticker symbol too long (max {_MAX_TICKER_LEN} characters)"
+    if not _TICKER_RE.match(cleaned):
+        return "Ticker symbol must be 1-10 alphanumeric characters or hyphens"
+    return None
+
+
+def _validate_date_range(start_str: str | None, end_str: str | None) -> list[str]:
+    """Validate an optional date range (start/end).
+
+    Returns a list of error messages (empty when valid).
+    """
+    errors = []
+    today = datetime.now().date()
+
+    for label, raw in [("start_date", start_str), ("end_date", end_str)]:
+        if not raw:
+            continue
+        try:
+            dt = datetime.strptime(raw.strip(), "%Y-%m-%d").date()
+        except (ValueError, AttributeError):
+            errors.append(f"{label} must be in YYYY-MM-DD format")
+            continue
+
+        if dt > today:
+            errors.append(f"{label} cannot be in the future")
+        if (today - dt).days > 365 * 5:
+            errors.append(f"{label} cannot be more than 5 years in the past")
+
+    if start_str and end_str:
+        try:
+            start = datetime.strptime(start_str.strip(), "%Y-%m-%d").date()
+            end = datetime.strptime(end_str.strip(), "%Y-%m-%d").date()
+            if start > end:
+                errors.append("start_date must be before or equal to end_date")
+        except (ValueError, AttributeError):
+            pass
+
+    return errors
+
+
+def _validate_classify_input(data: dict) -> list[str]:
+    """Validate the JSON body for the ``/api/classify`` endpoint."""
+    errors = []
+    if not isinstance(data, dict):
+        return ["Request body must be a JSON object"]
+    title = data.get("title", "")
+    content = data.get("content", "")
+    if not title and not content:
+        errors.append("At least one of 'title' or 'content' is required")
+    if title and not isinstance(title, str):
+        errors.append("'title' must be a string")
+    if content and not isinstance(content, str):
+        errors.append("'content' must be a string")
+    max_len = 10000
+    if len(title) > max_len:
+        errors.append(f"'title' exceeds maximum length of {max_len} characters")
+    if len(content) > max_len:
+        errors.append(f"'content' exceeds maximum length of {max_len} characters")
+    return errors
+
+
+# ============================================================
+# API ROUTES
 # ============================================================
 
 @app.route("/api/health")
@@ -155,22 +218,10 @@ def api_version():
 @app.route("/api/stats")
 def api_stats():
     try:
-        conn = get_db()
-        cur = conn.cursor()
-
-        cur.execute("SELECT COUNT(*) FROM signal_predictions")
-        total = cur.fetchone()[0]
-
-        cur.execute("SELECT COUNT(*) FROM signal_predictions WHERE signal='BULLISH'")
-        bullish = cur.fetchone()[0]
-
-        cur.execute("SELECT AVG(score) FROM signal_predictions")
-        avg_score = cur.fetchone()[0] or 0
-
-        cur.execute("SELECT COUNT(DISTINCT ticker) FROM signal_predictions")
-        tickers = cur.fetchone()[0]
-
-        conn.close()
+        total = execute_query_one("SELECT COUNT(*) FROM signal_predictions")[0]
+        bullish = execute_query_one("SELECT COUNT(*) FROM signal_predictions WHERE signal='BULLISH'")[0]
+        avg_score = execute_query_one("SELECT AVG(score) FROM signal_predictions")[0] or 0
+        tickers = execute_query_one("SELECT COUNT(DISTINCT ticker) FROM signal_predictions")[0]
 
         return jsonify({
             "success": True,
@@ -186,22 +237,15 @@ def api_stats():
 @app.route("/api/signals")
 def api_signals():
     try:
-        conn = get_db()
-        # CRÍTICO: RealDictCursor para devolver objetos, no arrays
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-        cur.execute("""
+        from psycopg2.extras import RealDictCursor
+        rows = execute_query("""
             SELECT ticker, score, signal, strength, explanation,
                    price_at_signal, created_at
             FROM signal_predictions
             ORDER BY created_at DESC
             LIMIT 50
-        """)
+        """, cursor_factory=RealDictCursor)
 
-        rows = cur.fetchall()
-        conn.close()
-
-        # Convertir fechas a string ISO para JSON
         for row in rows:
             if row.get('created_at'):
                 row['created_at'] = row['created_at'].isoformat()
@@ -218,21 +262,21 @@ def api_signals():
 @app.route("/api/score/<ticker>")
 def api_score(ticker):
     """Endpoint para score individual de un ticker"""
-    try:
-        conn = get_db()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    err = _validate_ticker(ticker)
+    if err:
+        return jsonify({"error": err}), 400
 
-        cur.execute("""
+    try:
+        from psycopg2.extras import RealDictCursor
+        cleaned = ticker.strip().upper()
+        row = execute_query_one("""
             SELECT ticker, score, signal, strength, explanation,
                    price_at_signal, created_at
             FROM signal_predictions
             WHERE ticker = %s
             ORDER BY created_at DESC
             LIMIT 1
-        """, (ticker.upper(),))
-
-        row = cur.fetchone()
-        conn.close()
+        """, (cleaned,), cursor_factory=RealDictCursor)
 
         if row:
             if row.get('created_at'):
@@ -256,6 +300,9 @@ def api_score(ticker):
 def api_classify():
     try:
         data = request.get_json() or {}
+        errors = _validate_classify_input(data)
+        if errors:
+            return jsonify({"error": "; ".join(errors)}), 400
 
         result = event_classifier.classify(
             data.get("title", ""),
@@ -279,11 +326,15 @@ def api_routes():
 @app.route("/api/analyze/<ticker>")
 @limiter.limit("10 per minute")
 def api_analyze(ticker):
+    err = _validate_ticker(ticker)
+    if err:
+        return jsonify({"error": err}), 400
+
     if not model:
         return jsonify({"error": "Gemini not configured"}), 500
 
     try:
-        ticker = ticker.upper()
+        ticker = ticker.strip().upper()
 
         response = model.generate_content(
             f"Analyze {ticker} stock. Give BUY/SELL/HOLD."

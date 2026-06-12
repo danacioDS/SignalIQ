@@ -5,7 +5,7 @@ import sys
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
-from signaliq.core.llm import llm_router
+from layers.llm_router import llm_router
 from layers.layer4_measurement import (
     validate_input,
     calculate_ndi,
