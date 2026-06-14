@@ -1,7 +1,5 @@
 # SignalIQ
 
-postgresql://signaliq_user:7QwQbmPXrNJBdXdy0hwuu4es0hzSS0rw@dpg-d8io1osm0tmc73bqfosg-a/signaliq_db
-
 > Where market narratives meet market reality.
 
 SignalIQ is a market intelligence framework that measures the distance between what the market is *saying* (news sentiment) and what the market is *actually doing* (price momentum). It quantifies this gap using the **Narrative Divergence Index (NDI)**:
@@ -12,19 +10,49 @@ NDI = sentiment_zscore − momentum_zscore
 
 When narrative runs ahead of price action, SignalIQ flags it as exhaustion, distribution, or severe divergence — not a prediction, but a systematic measurement of risk conditions.
 
-##### Crea y activa
-python3 -m venv venv
-sudo apt install python3-venv
-source venv/bin/activate
-
 ---
 
 ## Quick Start
 
+### Virtual environment (auto-activate)
+
 ```bash
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements_layer1.txt
+```
+
+**Auto-activate on `cd`** — add this to your `~/.bashrc` or `~/.zshrc`:
+
+```bash
+# Auto-activate venv when entering a directory with venv/
+cd() {
+    builtin cd "$@"
+    if [ -f "$PWD/venv/bin/activate" ]; then
+        source "$PWD/venv/bin/activate"
+    fi
+}
+```
+
+Or use [`direnv`](https://direnv.net/) (recommended):
+
+```bash
+echo 'layout python3' > .envrc && direnv allow
+```
+
+Or with a `.envrc` pointing to existing venv:
+
+```bash
+echo 'source venv/bin/activate' > .envrc && direnv allow
+```
+
+### Run
+
+```bash
 cp .env.example .env    # edit with your DATABASE_URL
-python demo.py          # end-to-end synthetic demo (stdlib only, no DB needed)
+python scripts/demo.py  # end-to-end synthetic demo (stdlib only, no DB needed)
+python api_signaliq.py  # Flask API on port 5000
+cd frontend && npm install && npm start  # React UI
 ```
 
 ---
@@ -37,47 +65,25 @@ python demo.py          # end-to-end synthetic demo (stdlib only, no DB needed)
 | **2** | PostgreSQL persistence (10 tables, 13 functions, 6 triggers) | Complete | 24 SQL validation queries |
 | **3** | NLP intelligence (entity resolution, Loughran-McDonald sentiment, momentum z-scores) | Complete | 16 tests, 100+ checks |
 | **4** | NDI signal generation (measurement, persistence, classification, regimes) | Complete | 15 tests, 80+ checks |
-| **5** | Fundamental analysis (valuation, growth, profitability scoring) | Complete | 1 smoke test |
+| **5** | Fundamental analysis (valuation, growth, profitability scoring) | Complete | Smoke test |
 | **AI** | LLM Router (Gemini, GLM, Groq) + Flask REST API | Complete | Mock tests |
 | **6** | React TypeScript frontend + HTML institutional dashboards | Partial | — |
-
----
-
-## Key Features
-
-- **NDI = sentiment_zscore − momentum_zscore** — measures narrative vs. price divergence
-- **4 risk regimes**: Aligned, Accumulation Divergence, Overheating Divergence, Insufficient Data
-- **3 signal states**: Inactive → Watching → Active (requires 2 consecutive threshold breaches)
-- **Inverted-U confidence**: mid-range NDI (0.8–2.2) is most reliable; extreme values are down-weighted
-- **LLM Router** with multi-provider support: Gemini, GLM (ZhipuAI), Groq, and MOCK mode
-- **Fundamental overlay** adjusts NDI risk/confidence based on valuation, growth, and financial health
-- **Stdlib-only core** — only Layer 1 (requests, feedparser, psycopg2) and Layer 5 (numpy) have external deps
 
 ---
 
 ## Project Structure
 
 ```
-├── layer1/                  # Data ingestion (5 modules)
-├── layers/                  # Layers 3, 4 & 5
-│   ├── layer3_*.py          # NLP intelligence
-│   ├── layer4_*.py          # NDI signal generation
-│   ├── integration.py       # Pipeline entry point (L3→L4)
-│   ├── lm_lexicon.py        # Loughran-McDonald lexicon (558 words)
-│   ├── signal_analyzer.py   # LLM integration helper
-│   └── fundamental/         # Fundamental analysis engine
-├── signaliq/core/           # LLM Router + config + persistence
-├── frontend/                # React TypeScript UI
-├── data_storage/            # SQL migrations (4 files)
-├── tests/                   # Official test suite
-├── scripts/                 # Cron, log rotation, backtesting
-├── synthetic/               # Data generator for demo
-├── config/                  # entity_aliases.json
-├── docs/                    # HLD, LLD, conceptual, prompts
-├── api_signaliq.py          # Flask REST API
-├── dashboard.html           # Institutional dark-themed dashboard
-├── demo.py                  # End-to-end synthetic demo
-└── simple_ndi.py            # Simplified NDI generator
+├── backend/              # Flask API (port 10000) + DB pool
+├── ingestion/            # Layer 1 — price & news ingestion
+├── layers/               # Layers 3, 4 & 5 — NLP, signal, fundamental
+├── sql/                  # Layer 2 — SQL migrations (6 files)
+├── frontend/             # Layer 6 — React TypeScript UI
+├── scripts/              # Cron, log rotation, backtesting, demo
+├── web/                  # Standalone HTML dashboards
+├── config/               # Thresholds + entity aliases
+├── tests/pytest/         # Pytest suite (single source of truth)
+└── logs/                 # Runtime logs (in .gitignore)
 ```
 
 ---
@@ -85,48 +91,42 @@ python demo.py          # end-to-end synthetic demo (stdlib only, no DB needed)
 ## Layers in Detail
 
 ### Layer 1 — Data Ingestion
-Collects daily prices (Yahoo Finance) and news (6 RSS feeds), normalizes, and writes to PostgreSQL.
 ```bash
-python -m layer1.orchestrator --type both
-python -m layer1.collect_prices --dry-run
-python -m layer1.collect_news --source reuters
+python -m ingestion.orchestrator --type both
+python -m ingestion.collect_prices --dry-run
+python -m ingestion.collect_news --source reuters
 ```
 
 ### Layer 2 — PostgreSQL Persistence
-Schema: `raw` (prices, news_headlines), `ops` (ingestion_runs, health), `config` (assets, aliases, sources).
 ```bash
-psql $DATABASE_URL -f data_storage/master_build.sql
+psql $DATABASE_URL -f sql/master_build.sql
 ```
 
 ### Layer 3 — NLP Intelligence
-Entity resolution (two-phase: URL param → alias regex), Loughran-McDonald sentiment (558 words, 6 categories), momentum z-scores (20-day rolling window, two-phase commit to prevent look-ahead bias).
+Entity resolution (two-phase: URL param → alias regex), Loughran-McDonald sentiment, momentum z-scores (20-day rolling, two-phase commit prevents look-ahead bias).
 
 ### Layer 4 — NDI Signal Generation
-4 sublayers with one-direction dependency: Measurement → Persistence → Classification → Orchestration.
-12-field output: ticker, date, ndi, ndi_delta, ndi_trend, regime, signal_state, confidence, price_modifier, persistence_days, risk_level, attention.
+4 sublayers: Measurement → Persistence → Classification → Orchestration. Output: ticker, date, ndi, regime, signal_state, confidence, risk_level, attention.
 
 ### Layer 5 — Fundamental Analysis
-Valuation ratios (P/E, P/B, P/S), growth metrics (EPS/revenue CAGR), profitability (margins, ROE, ROA), cash flow (FCF yield), financial health (D/E, current ratio). Sector-benchmarked scoring (0–100).
+Valuation (P/E, P/B, P/S), growth (CAGR), profitability (margins, ROE), cash flow (FCF yield), health (D/E). Sector-benchmarked 0–100 score.
 
 ### AI / LLM Layer
-Multi-provider LLM Router: Gemini, GLM (ZhipuAI), Groq. Flask API at port 5000 with `/analyze`, `/batch`, `/summary`, `/health` endpoints.
+Multi-provider LLM Router: Gemini, GLM (ZhipuAI), Groq, MOCK. Flask API (`api_signaliq.py`) at port 5000.
 
 ### Layer 6 — Frontend
-React TypeScript (Recharts, Axios, Tailwind) + HTML dashboard alternatives.
+React TypeScript (Recharts, Axios, Tailwind) + HTML dashboards in `web/`.
 
 ---
 
 ## Testing
 
 ```bash
-# Official test suite (no network or DB needed — all mock external deps)
-python -m tests.test_layer1_integration   # 15 tests, 61 checks
-python -m tests.test_layer3               # 16 tests, 100+ checks
-python -m tests.test_layer4               # 15 tests, 80+ checks
-python -m tests.test_fundamental_engine   # Fundamental smoke test
+# Pytest (no network or DB needed)
+pytest tests/pytest/ -m "not integration" -v
 
-# Demo
-python demo.py                            # 20 synthetic days
+# Integration tests (requires DB or API running)
+pytest tests/pytest/ -m integration -v
 ```
 
 ---
@@ -141,17 +141,6 @@ python demo.py                            # 20 synthetic days
 | `NDI_THRESHOLD` | `0.7` | Signal threshold |
 | `MAX_GAP_DAYS` | `3` | Max calendar gap before streak reset |
 | `LOOKBACK_DAYS` | `30` | Rolling window for z-scores |
-
----
-
-## Documentation
-
-- `docs/conceptual/` — Strategy & theory (6 docs: pitch, economics, statistics, commercial, data, operations)
-- `docs/hld/` — High-level design per layer
-- `docs/lld/` — Low-level design per layer
-- `docs/production_specification/` — Production architecture specs
-- `docs/prompts/` — Development prompts
-- `as_built/` — Build transcripts and development history
 
 ---
 

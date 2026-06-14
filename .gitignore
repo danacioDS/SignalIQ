@@ -1,6 +1,7 @@
 # Secrets
 .env
 .env.*
+secrets/
 *.key
 *_key.py
 api_*.py
