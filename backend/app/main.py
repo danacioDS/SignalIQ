@@ -397,3 +397,66 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port
     )
+@app.route('/api/analyze-llm/<ticker>')
+@handle_errors
+def api_analyze_llm(ticker):
+    """Analiza un ticker con IA y devuelve NDI + análisis"""
+    is_valid, result = validate_ticker(ticker)
+    if not is_valid:
+        return jsonify({'error': result, 'type': 'validation'}), 400
+    ticker = result
+    
+    # Obtener NDI real desde la base de datos
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT ndi, sentiment_zscore, momentum_zscore 
+            FROM layer4.signals 
+            WHERE ticker = %s 
+            ORDER BY signal_date DESC 
+            LIMIT 1
+        """, (ticker,))
+        row = cur.fetchone()
+        
+        if row:
+            ndi = float(row[0])
+            sentiment = float(row[1]) if row[1] else None
+            momentum = float(row[2]) if row[2] else None
+        else:
+            # Si no hay señal, calcular NDI básico
+            ndi = 0.5
+            sentiment = None
+            momentum = None
+            
+    finally:
+        if conn:
+            return_db(conn)
+    
+    # Generar análisis con IA
+    from app.llm_service import llm_service
+    analysis = llm_service.analyze_ticker(ticker, ndi, sentiment, momentum)
+    
+    # Determinar régimen
+    if ndi > 0.7:
+        regime = "Overheating Divergence"
+        regime_color = "red"
+    elif ndi > 0.3:
+        regime = "Accumulation Divergence"
+        regime_color = "yellow"
+    else:
+        regime = "Aligned"
+        regime_color = "green"
+    
+    return jsonify({
+        'success': True,
+        'ticker': ticker,
+        'ndi': round(ndi, 3),
+        'regime': regime,
+        'regime_color': regime_color,
+        'sentiment': round(sentiment, 2) if sentiment else None,
+        'momentum': round(momentum, 2) if momentum else None,
+        'confidence': round(0.5 + abs(ndi) * 0.5, 2) if ndi else 0.5,
+        'analysis': analysis
+    })
