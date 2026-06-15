@@ -55,7 +55,7 @@ def write_price(conn, record: dict, ingestion_run_id: str):
             )
             result = cur.fetchone()[0]
             return result
-    except psycopg2.UniqueViolation:
+    except psycopg2.errors.UniqueViolation:
         conn.rollback()
         logger.warning("Duplicate price record for %s on %s", record.get("ticker"), record.get("date"))
         return None
@@ -83,7 +83,7 @@ def write_headline(conn, source_id: int, record: dict, ingestion_run_id: str):
             )
             result = cur.fetchone()[0]
             return result
-    except psycopg2.UniqueViolation:
+    except psycopg2.errors.UniqueViolation:
         conn.rollback()
         logger.warning("Duplicate headline for URL: %s", record.get("article_url"))
         return None
@@ -97,7 +97,7 @@ def get_source_id(conn, source_name: str):
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id FROM config.news_sources WHERE name = %s AND is_active = TRUE",
+                "SELECT id FROM config.news_sources WHERE source_name = %s AND is_active = TRUE",
                 (source_name,)
             )
             result = cur.fetchone()
