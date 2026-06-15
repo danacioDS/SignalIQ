@@ -1327,4 +1327,86 @@ MIN_PRICE_HISTORY_DAYS = 6
 
 ---
 
-*Reporte de auditoría generado el 2026-06-06. Correcciones documentadas el 2026-06-12 (Rondas 1-6).*
+## 8. Verificación de Estado Actual — 2026-06-15 (Ronda 7)
+
+### 8.1 Correcciones al reporte original
+
+Tras verificar el sistema en vivo, se detectaron las siguientes imprecisiones en secciones anteriores:
+
+| Afirmación anterior | Realidad | ¿Corregido en código? |
+|---|---|---|
+| DB: `signal_iq` | DB: **`signaliq`** | ❌ Nombre incorrecto en el reporte (no afecta código) |
+| PRICE: `price.asset_prices` (5 records) | **`public.prices`** con **508 records** | ✅ El pipeline PRICE funciona con datos reales |
+| NEWS: `news.articles` (schema `news`) | **`public.headlines`** con **0 records** | ❌ El pipeline NEWS no escribe datos |
+| `config.news_sources` no existe (D-01) | ✅ **Sí existe**, con 6 fuentes y columna `source_name` | ❌ Schema no documentado en migraciones |
+
+### 8.2 Bug crítico confirmado: Schema mismatch en `writer.py`
+
+**Archivo:** `ingestion/writer.py:100`
+
+```python
+# ❌ Actual (roto):
+cur.execute("SELECT id FROM config.news_sources WHERE name = %s AND is_active = TRUE", ...)
+# ✅ Debería ser:
+cur.execute("SELECT id FROM config.news_sources WHERE source_name = %s AND is_active = TRUE", ...)
+```
+
+**Evidencia:**
+
+```
+\d config.news_sources
+  Column    |  Type
+------------+--------------------------
+ id         | integer
+ source_name| character varying(100)   ← columna real
+ feed_url   | text
+ is_active  | boolean
+```
+
+### 8.3 Estado del sistema verificado
+
+| Componente | Resultado | Detalle |
+|---|---|---|
+| `psql` | ✅ | PostgreSQL 16, aceptando conexiones |
+| DB `signaliq` | ✅ | 4 schemas: `config`, `layer4`, `public`, `raw` |
+| `config.news_sources` | ✅ | 6 fuentes: reuters, ap, yahoo_general, yahoo_ticker, cnbc, marketwatch |
+| `public.prices` | ✅ | 508 registros (pipeline PRICE funcional) |
+| `public.headlines` | ⚠️ | 0 registros (pipeline NEWS roto por schema mismatch) |
+| `public.ndi_signals` | ✅ | Tabla existente, vacía |
+| `layer4.daily_snapshots` | ✅ | Tabla existente |
+| `layer4.signals` | ✅ | Tabla existente |
+| `raw.insert_price_record` | ✅ | Función existe |
+| `raw.insert_headline_record` | ✅ | Función existe |
+| Python | ✅ | 3.12.3 |
+| Git | ✅ | Branch `recovery-stable`, commit `54d39670` |
+
+### 8.4 Causa raíz del bug en NEWS pipeline
+
+1. `writer.py:100` consulta `WHERE name = %s` → columna real es `source_name`
+2. `get_source_id()` retorna `None` para todas las fuentes
+3. `orchestrator.py:121` detecta `source_id is None` → marca como `FAILED` y saltea
+4. `public.headlines` queda en 0 registros
+
+### 8.5 Acción correctiva requerida
+
+```python
+# En ingestion/writer.py línea 100:
+# Cambiar:
+"SELECT id FROM config.news_sources WHERE name = %s AND is_active = TRUE"
+# A:
+"SELECT id FROM config.news_sources WHERE source_name = %s AND is_active = TRUE"
+```
+
+### 8.6 Métricas actualizadas
+
+| Métrica | Valor | Tendencia |
+|---|---|---|
+| Pipeline PRICE | 508 records | 🟢 Verde |
+| Pipeline NEWS | 0 records | 🔴 Roto (schema mismatch) |
+| Errores de schema | 1 (`name` → `source_name`) | 🔴 Crítico |
+| DB schemas creados | 4 de 4 | 🟢 Verde |
+| Fuentes en `news_sources` | 6 | 🟢 Verde |
+
+---
+
+*Reporte de auditoría generado el 2026-06-06. Correcciones documentadas el 2026-06-12 (Rondas 1-6). Verificación de estado el 2026-06-15 (Ronda 7).*
