@@ -33,7 +33,7 @@ export default function Dashboard() {
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [priceHistory, setPriceHistory] = useState<any[]>([]);
-  const [selectedTicker, setSelectedTicker] = useState<string | null>(null); // ← CAMBIADO
+  const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
 
   // ── Mapeo de sectores ──────────────────────────────────────────────────────
   const sectorMap: Record<string, string> = {
@@ -74,9 +74,6 @@ export default function Dashboard() {
             confidence: item.confidence || 70,
           }));
           setSignals(formatted);
-          if (formatted.length > 0) {
-            // No seleccionar automáticamente
-          }
         } else {
           setError("No data available from the API.");
           setSignals([]);
@@ -248,7 +245,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Grid de señales - ahora navega a Capa 2 */}
+      {/* Grid de señales */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 32 }}>
         {filteredSignals.map((s) => {
           const icon = regimeIcon[s.regime] || '🟡';
@@ -266,7 +263,7 @@ export default function Dashboard() {
                 overflow: "hidden",
               }}
               onClick={() => {
-                setSelectedTicker(s.ticker); // ← Navega a Capa 2
+                setSelectedTicker(s.ticker);
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -327,7 +324,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Gráfico - Price History */}
+      {/* Gráfico - Price Evolution */}
       <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px", marginBottom: 24 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>
           📈 Price Evolution {selectedTicker ? `(${selectedTicker})` : ''}
