@@ -1,12 +1,8 @@
-## ✅ **READEME ACTUALIZADO CON COMANDOS FÁCILES Y RÁPIDOS**
-
-Te he preparado un README completamente renovado, con una sección central llamada **"🚀 Comandos Fáciles (Copy-Paste)"** donde he puesto exactamente los comandos que funcionan, explicados de forma directa para que cualquier persona, sin importar su experiencia, pueda ejecutarlos sin pensar.
 
 ---
 
-### README.md
-
-# SignalIQ
+```markdown
+# ✅✅ SignalIQ ✅✅
 
 > Where market narratives meet market reality.
 
@@ -32,85 +28,65 @@ The dashboard shows real-time signals for major tickers (NVDA, AAPL, MSFT, TSLA)
 
 ---
 
-## 🚀 Comandos Fáciles (Copy-Paste)
+## ⚡ Quick Start
 
-Aquí tienes los comandos principales para trabajar con SignalIQ. Son fáciles y directos.
-
-### 1. Iniciar el Dashboard Local
-Abre el proyecto y el dashboard en tu navegador.
+### 1. Clone the repository
 ```bash
-cd ~/repo_lab/SignalIQ/frontend && npm start
+git clone https://github.com/danacioDS/SignalIQ.git
+cd SignalIQ
 ```
-**El dashboard se abrirá en:** `http://localhost:3001`
 
-### 2. Desplegar a Vercel (Subir a Producción)
-Actualiza el dashboard en la nube con tus últimos cambios.
-```bash
-cd ~/repo_lab/SignalIQ/frontend && CI=false vercel --prod --force
-```
-**El dashboard se actualizará en:** `https://signaliq-zeta.vercel.app`
-
-### 3. Verificar el Dashboard en Producción
-Comprueba que el sitio web esté funcionando correctamente.
-```bash
-curl -I https://signaliq-zeta.vercel.app
-```
-**Deberías ver:** `HTTP/2 200`
-
----
-
-## 🔗 Links Importantes
-
-| Recurso | Link |
-|---------|------|
-| **Dashboard en Producción** | [https://signaliq-zeta.vercel.app](https://signaliq-zeta.vercel.app) |
-| **Código Fuente (GitHub)** | [https://github.com/danacioDS/SignalIQ](https://github.com/danacioDS/SignalIQ) |
-| **Documentación Original** | [https://github.com/danacioDS/SignalIQ/tree/docs](https://github.com/danacioDS/SignalIQ/tree/docs) |
-
----
-
-## Quick Start
-
-### Virtual environment (auto-activate)
-
+### 2. Set up Python environment
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements_layer1.txt
 ```
 
-**Auto-activate on `cd`** — add this to your `~/.bashrc` or `~/.zshrc`:
-
+### 3. Start the local dashboard
 ```bash
-# Auto-activate venv when entering a directory with venv/
-cd() {
-    builtin cd "$@"
-    if [ -f "$PWD/venv/bin/activate" ]; then
-        source "$PWD/venv/bin/activate"
-    fi
-}
+cd frontend
+npm install
+npm start
+```
+**Dashboard will open at:** `http://localhost:3001`
+
+### 4. (Optional) Start the backend API
+```bash
+cd backend
+cp .env.example .env   # edit with your DATABASE_URL
+python app/main.py
+```
+**API will be available at:** `http://localhost:10000`
+
+---
+
+## 🚀 Easy Commands (Copy-Paste)
+
+### Start Local Dashboard
+```bash
+cd ~/repo_lab/SignalIQ/frontend && npm start
 ```
 
-Or use [`direnv`](https://direnv.net/) (recommended):
-
+### Deploy to Vercel (Production)
 ```bash
-echo 'layout python3' > .envrc && direnv allow
+cd ~/repo_lab/SignalIQ/frontend && CI=false vercel --prod --force
 ```
 
-Or with a `.envrc` pointing to existing venv:
-
+### Verify Production
 ```bash
-echo 'source venv/bin/activate' > .envrc && direnv allow
+curl -I https://signaliq-zeta.vercel.app
 ```
 
-### Run
+---
 
-```bash
-cp .env.example .env    # edit with your DATABASE_URL
-python scripts/demo.py  # end-to-end synthetic demo (stdlib only, no DB needed)
-python api_signaliq.py  # Flask API on port 5000
-cd frontend && npm install && npm start  # React UI on http://localhost:3001
-```
+## 🔗 Important Links
+
+| Resource | Link |
+|----------|------|
+| **Production Dashboard** | [https://signaliq-zeta.vercel.app](https://signaliq-zeta.vercel.app) |
+| **Source Code (GitHub)** | [https://github.com/danacioDS/SignalIQ](https://github.com/danacioDS/SignalIQ) |
+| **Original Documentation** | [https://github.com/danacioDS/SignalIQ/tree/docs](https://github.com/danacioDS/SignalIQ/tree/docs) |
 
 ---
 
@@ -209,7 +185,7 @@ pytest tests/pytest/ -m integration -v
 - **Deployment:** Automatic from `main` branch
 
 ### Backend (Render)
-- **API URL:** `https://signaliq.onrender.com`
+- **API URL:** `https://signaliq-l8mi.onrender.com`
 - **Deployment:** Automatic from `main` branch
 
 ---
@@ -229,13 +205,26 @@ Markets are driven by stories as much as by numbers. Stories are created, spread
 
 ---
 
-## License
+## Author
 
-© 2026 SignalIQ · Intelligence Beyond Narratives
+**Daniel Canedo**
+
+- **ML Engineer** at Anyone AI
+- **MSc. Economics** — Yokohama National University
+- **Economist** — Universidad Católica Boliviana
+
+This software was designed and built by Daniel Canedo as part of the SignalIQ project.
 
 ---
 
-## 🔧 CÓMO APLICAR ESTE README
+## License
+
+© 2026 SignalIQ · Intelligence Beyond Narratives
+```
+
+---
+
+## 📋 **CÓMO APLICAR ESTE README**
 
 ```bash
 cd ~/repo_lab/SignalIQ
@@ -246,6 +235,24 @@ nano README.md
 
 # 2. Guardar en GitHub
 git add README.md
-git commit -m "docs: readme con comandos fáciles y links directos"
+git commit -m "docs: add author section with credentials"
 git push origin main
 ```
+
+---
+
+## ✅ **SECCIÓN DE AUTOR AÑADIDA**
+
+```markdown
+## Author
+
+**Daniel Canedo**
+
+- **ML Engineer** at Anyone AI
+- **MSc. Economics** — Yokohama National University
+- **Economist** — Universidad Católica Boliviana
+
+This software was designed and built by Daniel Canedo as part of the SignalIQ project.
+```
+
+---
