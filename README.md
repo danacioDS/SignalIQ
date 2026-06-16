@@ -112,7 +112,6 @@ python scripts/demo.py  # end-to-end synthetic demo (stdlib only, no DB needed)
 ├── api_signaliq.py         # Legacy Flask REST API (port 5000)
 ├── Dockerfile              # Backend Docker build
 ├── docker-compose.yml      # Multi-service orchestration
-├── railway.json            # Railway deployment config
 ├── pytest.ini              # Pytest config (smoke/integration/slow markers)
 └── .env.example            # Environment variable template
 ```
@@ -211,11 +210,7 @@ python scripts/demo.py                          # 20 synthetic days
 ## Deployment
 
 ```bash
-# Docker
 docker compose up -d
-
-# Railway
-# Uses railway.json — Dockerfile builder, 1 replica, health check at /health
 ```
 
 ---

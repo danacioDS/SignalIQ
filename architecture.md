@@ -27,7 +27,7 @@ Markets are driven by stories as much as by numbers. Stories are created, spread
 | **Frontend** | React 19, TypeScript 4.9, Recharts 3.8, Axios 1.17, Tailwind CSS 3.4 |
 | **Database** | PostgreSQL (raw, ops, config, layer4 schemas) |
 | **AI/LLM** | Google Gemini, GLM (ZhipuAI), Groq, MOCK mode |
-| **Infrastructure** | Docker, Docker Compose, Railway |
+| **Infrastructure** | Docker, Docker Compose |
 | **Data Sources** | Yahoo Finance (yfinance 0.2), 6 RSS feeds (feedparser) |
 | **External Deps** | psycopg2-binary, requests, numpy (only Layer 5), google-generativeai, groq |
 
@@ -52,7 +52,7 @@ repo root/
 ├── requirements_test.txt                   # Test dependencies (pytest, pytest-cov, requests)
 ├── Dockerfile                              # Python 3.12-slim backend build
 ├── docker-compose.yml                      # Multi-service orchestration (port 5000)
-├── railway.json                            # Railway deployment config
+
 ├── package.json                            # Root recharts dep
 ├── pitch.md                                # Commercial pitch
 ├── workflow.md                             # Development workflow
@@ -306,7 +306,7 @@ repo root/
                                                                     process_batch
 
   Deployment:
-  Dockerfile ──→ docker-compose.yml ──→ Railway (railway.json)
+  Dockerfile ──→ docker-compose.yml
   backend/app/main.py (port 10000, rate-limited)
   api_signaliq.py (port 5000, legacy)
 ```
