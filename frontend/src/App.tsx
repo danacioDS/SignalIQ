@@ -46,39 +46,159 @@ const mockDatabase: Record<string, any> = {
   "AMD": { ndi: 0.558, regime: "Watching", sentiment: 0.66, momentum: 0.50, confidence: 72, recommendation: "AMD shows accumulation divergence. Maintain position with vigilance." },
 };
 
-// ── Live Signals Component ───────────────────────────────────────────────────
+##############################################
+// ── Live Signals Component (CONSUME API REAL) ──────────────────────────────
 const DashboardContent = () => {
-  const [signals] = useState([
-    { ticker: "NVDA", ndi: 0.738, regime: "Overheating", color: C.red },
-    { ticker: "AAPL", ndi: 0.522, regime: "Watching", color: C.yellow },
-    { ticker: "MSFT", ndi: 0.668, regime: "Watching", color: C.yellow },
-    { ticker: "TSLA", ndi: 0.532, regime: "Watching", color: C.yellow },
-  ]);
-
+  const [selectedSector, setSelectedSector] = useState("All");
+  const [signals, setSignals] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [tickerInput, setTickerInput] = useState("");
   const [analysisResult, setAnalysisResult] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
 
-  const analyzeTicker = () => {
+  // Definición de sectores (hardcodeado solo para organización visual)
+  const sectorMap: Record<string, string> = {
+    'NVDA': 'Technology', 'AAPL': 'Technology', 'MSFT': 'Technology',
+    'GOOGL': 'Technology', 'META': 'Technology', 'AMD': 'Technology',
+    'AMZN': 'Technology', 'TSLA': 'Automotive', 'JPM': 'Financial',
+    'BAC': 'Financial', 'GS': 'Financial', 'XOM': 'Energy',
+    'CVX': 'Energy', 'COP': 'Energy', 'KO': 'Consumer',
+    'WMT': 'Consumer', 'PG': 'Consumer', 'JNJ': 'Healthcare',
+    'UNH': 'Healthcare', 'TSM': 'Semiconductors', 'INTC': 'Semiconductors'
+  };
+
+  const defaultTickers = ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META', 'AMD', 'AMZN', 'JPM', 'XOM', 'KO'];
+
+  // Cargar datos reales desde el backend
+  useEffect(() => {
+    const fetchSignals = async () => {
+      try {
+        setLoading(true);
+        setError("");
+        const response = await fetch(
+          `https://signaliq-api.onrender.com/api/signals-live?tickers=${defaultTickers.join(',')}`
+        );
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success && data.signals) {
+          // Convertir al formato del dashboard
+          const formatted = data.signals.map((item: any) => ({
+            ticker: item.ticker,
+            ndi: item.ndi || 0.45,
+            regime: item.regime || 'Watching',
+            color: item.color === 'red' ? C.red : 
+                    item.color === 'green' ? C.green : C.yellow,
+            sector: sectorMap[item.ticker] || 'Other',
+            price: item.current_price || 'N/A',
+            sentiment: item.sentiment || 0.5,
+            momentum: item.momentum || 0,
+          }));
+          setSignals(formatted);
+        } else {
+          throw new Error('Invalid response format');
+        }
+      } catch (err) {
+        console.error('Error fetching signals:', err);
+        setError('Failed to load data from backend. Using fallback data.');
+        // Fallback a datos mock (solo si la API falla)
+        setSignals(getFallbackData());
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSignals();
+    // Actualizar cada 5 minutos
+    const interval = setInterval(fetchSignals, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fallback data (solo si la API no responde)
+  const getFallbackData = () => {
+    return [
+      { ticker: "NVDA", ndi: 0.738, regime: "Overheating", color: C.red, sector: "Technology" },
+      { ticker: "AAPL", ndi: 0.522, regime: "Watching", color: C.yellow, sector: "Technology" },
+      { ticker: "MSFT", ndi: 0.668, regime: "Watching", color: C.yellow, sector: "Technology" },
+      { ticker: "TSLA", ndi: 0.532, regime: "Watching", color: C.yellow, sector: "Automotive" },
+    ];
+  };
+
+  // Obtener sectores únicos
+  const sectors = ["All", ...new Set(signals.map(s => s.sector))];
+  
+  // Filtrar señales por sector
+  const filteredSignals = selectedSector === "All" 
+    ? signals 
+    : signals.filter(s => s.sector === selectedSector);
+
+  // Calcular NDI promedio por sector
+  const sectorAverages = signals.reduce((acc, s) => {
+    if (!acc[s.sector]) acc[s.sector] = { total: 0, count: 0 };
+    acc[s.sector].total += s.ndi;
+    acc[s.sector].count += 1;
+    return acc;
+  }, {} as Record<string, { total: number; count: number }>);
+
+  const sectorPerformance = Object.keys(sectorAverages).map(sector => ({
+    sector,
+    avgNDI: sectorAverages[sector].total / sectorAverages[sector].count
+  }));
+
+  // Análisis de un ticker específico
+  const analyzeTicker = async () => {
     const ticker = tickerInput.trim().toUpperCase();
     if (!ticker) return;
 
-    setLoading(true);
-    
-    setTimeout(() => {
-      const data = mockDatabase[ticker] || {
-        ndi: 0.45,
-        regime: "Watching",
-        sentiment: 0.58,
-        momentum: 0.44,
-        confidence: 65,
-        recommendation: `${ticker} in watching regime. Divergence within normal ranges. Continue monitoring catalysts.`,
-      };
+    setAnalyzing(true);
+    setError("");
+
+    try {
+      const response = await fetch(`https://signaliq-api.onrender.com/api/prices/${ticker}`);
       
-      setAnalysisResult({ ticker, ...data });
-      setLoading(false);
-    }, 200);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      setAnalysisResult({
+        ticker: data.ticker,
+        ndi: data.ndi,
+        regime: data.regime,
+        sentiment: data.sentiment,
+        momentum: data.momentum,
+        confidence: data.confidence,
+        recommendation: data.recommendation,
+        current_price: data.current_price
+      });
+    } catch (err) {
+      console.error('Error analyzing ticker:', err);
+      setError(`Could not fetch data for ${ticker}.`);
+    } finally {
+      setAnalyzing(false);
+    }
   };
+
+  if (loading && signals.length === 0) {
+    return (
+      <div style={{ padding: "24px 32px", display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}>
+        <div style={{ textAlign: "center", color: C.muted }}>
+          <div style={{ fontSize: 24, marginBottom: 16 }}>📊</div>
+          <div>Loading market data...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: "24px 32px" }}>
@@ -86,23 +206,86 @@ const DashboardContent = () => {
         📊 Live Signals
       </h1>
       <p style={{ fontSize: 12, color: C.muted, marginBottom: 24 }}>
-        NDI = Normalized Sentiment − Normalized Momentum
+        NDI = Normalized Sentiment − Normalized Momentum {signals.length > 0 && `• ${signals.length} tickers loaded`}
       </p>
 
+      {error && (
+        <div style={{ background: C.redBg, borderRadius: 8, padding: "12px", marginBottom: 16 }}>
+          <p style={{ fontSize: 12, color: C.red, margin: 0 }}>⚠️ {error}</p>
+        </div>
+      )}
+
+      {/* Filtros por sector */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
+        {sectors.map((sector) => (
+          <button
+            key={sector}
+            onClick={() => setSelectedSector(sector)}
+            style={{
+              background: selectedSector === sector ? C.accent : "transparent",
+              color: selectedSector === sector ? "#fff" : C.muted,
+              border: `1px solid ${selectedSector === sector ? C.accent : C.cardBorder}`,
+              borderRadius: 20,
+              padding: "6px 16px",
+              fontSize: 12,
+              cursor: "pointer",
+              transition: "all 0.2s",
+            }}
+          >
+            {sector === "All" ? "📊 All" : sector}
+          </button>
+        ))}
+      </div>
+
+      {/* Grid de señales */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 32 }}>
-        {signals.map((s) => (
+        {filteredSignals.map((s) => (
           <div key={s.ticker} style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px" }}>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{s.ticker}</div>
-            <div style={{ fontSize: 28, fontWeight: 700, margin: "8px 0", color: s.color }}>
-              +{s.ndi.toFixed(3)}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{s.ticker}</div>
+              <div style={{ fontSize: 10, color: C.muted }}>{s.sector}</div>
             </div>
-            <div style={{ fontSize: 12, background: s.color === C.red ? C.redBg : C.yellowBg, color: s.color, padding: "4px 12px", borderRadius: 20, display: "inline-block" }}>
+            <div style={{ fontSize: 28, fontWeight: 700, margin: "8px 0", color: s.color }}>
+              {s.ndi > 0 ? `+${s.ndi.toFixed(3)}` : s.ndi.toFixed(3)}
+            </div>
+            <div style={{ 
+              fontSize: 12, 
+              background: s.color === C.red ? C.redBg : 
+                         s.color === C.green ? C.greenBg : C.yellowBg, 
+              color: s.color, 
+              padding: "4px 12px", 
+              borderRadius: 20, 
+              display: "inline-block" 
+            }}>
               {s.regime}
             </div>
           </div>
         ))}
       </div>
 
+      {/* Sector Performance */}
+      <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px", marginBottom: 24 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>📈 Sector Performance (Average NDI)</h3>
+        {sectorPerformance.map((s) => (
+          <div key={s.sector} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+            <div style={{ width: 120, fontSize: 12, color: C.muted }}>{s.sector}</div>
+            <div style={{ flex: 1, height: 8, background: C.bg, borderRadius: 4, overflow: "hidden" }}>
+              <div style={{
+                width: `${Math.min(s.avgNDI / 2 * 100, 100)}%`,
+                height: "100%",
+                background: s.avgNDI > 0.6 ? C.red : s.avgNDI > 0.4 ? C.yellow : C.green,
+                borderRadius: 4,
+                transition: "width 0.3s",
+              }} />
+            </div>
+            <div style={{ width: 40, fontSize: 12, color: C.text, textAlign: "right" }}>
+              {s.avgNDI.toFixed(2)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* NDI Evolution Chart - datos del backend si están disponibles */}
       <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px", marginBottom: 24 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>📈 NDI Evolution (Last 6 Months)</h3>
         <ResponsiveContainer width="100%" height={250}>
@@ -124,6 +307,7 @@ const DashboardContent = () => {
         </ResponsiveContainer>
       </div>
 
+      {/* Interactive Analyzer */}
       <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px" }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>🔍 Analyze Any Ticker</h3>
         <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
@@ -132,15 +316,15 @@ const DashboardContent = () => {
             value={tickerInput}
             onChange={(e) => setTickerInput(e.target.value.toUpperCase())}
             onKeyPress={(e) => e.key === 'Enter' && analyzeTicker()}
-            placeholder="Ex: NVDA, AAPL, MSFT, TSLA, GOOGL, META, AMZN, AMD"
+            placeholder="Ex: NVDA, AAPL, MSFT, TSLA, GOOGL, META"
             style={{ flex: 1, background: C.bg, border: `1px solid ${C.cardBorder}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13 }}
           />
           <button 
             onClick={analyzeTicker}
-            disabled={loading}
-            style={{ background: C.accent, border: "none", borderRadius: 8, padding: "10px 20px", color: "#fff", fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}
+            disabled={analyzing}
+            style={{ background: C.accent, border: "none", borderRadius: 8, padding: "10px 20px", color: "#fff", fontWeight: 600, cursor: analyzing ? "not-allowed" : "pointer", opacity: analyzing ? 0.7 : 1 }}
           >
-            {loading ? "Analyzing..." : "Analyze →"}
+            {analyzing ? "Analyzing..." : "Analyze →"}
           </button>
         </div>
 
@@ -157,15 +341,16 @@ const DashboardContent = () => {
                 {analysisResult.regime}
               </span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 12 }}>
               <div><p style={{ fontSize: 10, color: C.muted }}>NDI</p><p style={{ fontSize: 16, fontWeight: 600 }}>+{analysisResult.ndi.toFixed(3)}</p></div>
-              <div><p style={{ fontSize: 10, color: C.muted }}>Sentiment</p><p style={{ fontSize: 16, fontWeight: 600 }}>{(analysisResult.sentiment).toFixed(3)}</p></div>
-              <div><p style={{ fontSize: 10, color: C.muted }}>Momentum</p><p style={{ fontSize: 16, fontWeight: 600 }}>{(analysisResult.momentum).toFixed(3)}</p></div>
+              <div><p style={{ fontSize: 10, color: C.muted }}>Sentiment</p><p style={{ fontSize: 16, fontWeight: 600 }}>{(analysisResult.sentiment || 0).toFixed(3)}</p></div>
+              <div><p style={{ fontSize: 10, color: C.muted }}>Momentum</p><p style={{ fontSize: 16, fontWeight: 600 }}>{(analysisResult.momentum || 0).toFixed(2)}%</p></div>
+              <div><p style={{ fontSize: 10, color: C.muted }}>Price</p><p style={{ fontSize: 16, fontWeight: 600 }}>${(analysisResult.current_price || 0).toFixed(2)}</p></div>
             </div>
             <div style={{ borderTop: `1px solid ${C.cardBorder}`, paddingTop: 12 }}>
               <p style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>🤖 SignalIQ Analysis</p>
               <p style={{ fontSize: 13, lineHeight: 1.5 }}>{analysisResult.recommendation}</p>
-              <p style={{ fontSize: 10, color: C.accent, marginTop: 8 }}>Confidence: {analysisResult.confidence}%</p>
+              <p style={{ fontSize: 10, color: C.accent, marginTop: 8 }}>Confidence: {analysisResult.confidence || 70}%</p>
             </div>
           </div>
         )}
@@ -174,6 +359,7 @@ const DashboardContent = () => {
   );
 };
 
+#################################################
 // ── Section: Economic Foundation ─────────────────────────────────────────────
 const EconomicFoundationContent = () => (
   <div style={{ padding: "24px 32px", maxWidth: 1000 }}>
