@@ -16,6 +16,7 @@ import logging
 import re as _re
 import yfinance as yf
 import google.generativeai as genai
+import requests
 
 from app.scoring.signal_score import SignalIQScore
 from app.classification.event_classifier import EventClassifier
@@ -185,6 +186,81 @@ def _validate_classify_input(data: dict) -> list[str]:
     if len(content) > max_len:
         errors.append(f"'content' exceeds maximum length of {max_len} characters")
     return errors
+
+# ============================================================
+# FINNHUB API (alternativa a Yahoo Finance para Render)
+# ============================================================
+
+def get_stock_data_finnhub(ticker: str) -> dict:
+    """Obtiene datos de Finnhub API"""
+    api_key = os.environ.get("FINNHUB_API_KEY")
+    if not api_key:
+        return {'error': 'Finnhub API key not configured', 'ticker': ticker}
+    
+    try:
+        url = f"https://finnhub.io/api/v1/stock/candle?symbol={ticker}&resolution=D&count=60&token={api_key}"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        
+        if "c" in data and data["c"] and len(data["c"]) > 0:
+            closes = data["c"]
+            timestamps = data["t"]
+            
+            price_history = []
+            for i in range(len(closes)):
+                price_history.append({
+                    "date": datetime.fromtimestamp(timestamps[i]).strftime("%Y-%m-%d"),
+                    "close": closes[i]
+                })
+            
+            current_price = closes[-1] if closes else 0
+            prev_price = closes[-5] if len(closes) >= 5 else closes[0] if closes else 0
+            
+            # Calcular sentimiento y momentum
+            if len(closes) > 1:
+                daily_return = (closes[-1] - closes[-2]) / closes[-2]
+                sentiment = 0.5 + (daily_return * 0.5)
+            else:
+                sentiment = 0.5
+            sentiment = max(0.1, min(0.9, sentiment))
+            
+            if len(closes) >= 20:
+                momentum = (closes[-1] / closes[-20] - 1) * 100
+            else:
+                momentum = 0
+            
+            ndi = sentiment - (momentum / 100)
+            ndi = max(-2.0, min(2.0, ndi))
+            
+            if ndi > 1.5:
+                regime = "Overheating"
+                regime_color = "red"
+            elif ndi > 0.5:
+                regime = "Watching"
+                regime_color = "yellow"
+            else:
+                regime = "Aligned"
+                regime_color = "green"
+            
+            return {
+                'success': True,
+                'ticker': ticker,
+                'current_price': round(current_price, 2),
+                'prev_price': round(prev_price, 2),
+                'sentiment': round(sentiment, 3),
+                'momentum': round(momentum, 2),
+                'ndi': round(ndi, 3),
+                'regime': regime,
+                'regime_color': regime_color,
+                'confidence': round(70 + (abs(ndi) * 15), 1),
+                'recommendation': f"{ticker} shows {regime.lower()} divergence.",
+                'price_history': price_history
+            }
+        else:
+            return {'error': f'No data found for {ticker}', 'ticker': ticker}
+    except Exception as e:
+        log_error(f"Finnhub error for {ticker}: {str(e)}")
+        return {'error': str(e), 'ticker': ticker}
 
 def get_ticker_data_sync(ticker: str) -> dict:
     """Obtiene datos de Yahoo Finance para un ticker (versión síncrona)."""
@@ -418,7 +494,7 @@ def api_analyze(ticker):
         return jsonify({"error": str(e)}), 500
 
 # ============================================================
-# NUEVOS ENDPOINTS PARA PRECIOS DE YAHOO FINANCE
+# ENDPOINTS CON FINNHUB (ALTERNATIVA A YAHOO FINANCE)
 # ============================================================
 
 @app.route('/api/prices/<ticker>')
@@ -433,6 +509,12 @@ def api_prices(ticker):
     period = request.args.get('period', '6mo')
     interval = request.args.get('interval', '1d')
     
+    # Intentar con Finnhub primero (más confiable en Render)
+    result = get_stock_data_finnhub(ticker)
+    if 'error' not in result or result.get('error') is None:
+        return jsonify(result)
+    
+    # Si Finnhub falla, intentar con yfinance
     try:
         stock = yf.Ticker(ticker)
         hist = stock.history(period=period, interval=interval)
@@ -443,11 +525,9 @@ def api_prices(ticker):
                 'ticker': ticker
             }), 404
         
-        # Datos básicos
         current_price = hist['Close'].iloc[-1]
         prev_price = hist['Close'].iloc[-5] if len(hist) >= 5 else hist['Close'].iloc[0]
         
-        # Sentimiento desde precios
         if len(hist) > 1:
             daily_return = hist['Close'].pct_change().iloc[-1]
             sentiment = 0.5 + (daily_return * 0.5)
@@ -455,17 +535,14 @@ def api_prices(ticker):
             sentiment = 0.5
         sentiment = max(0.1, min(0.9, sentiment))
         
-        # Momentum
         if len(hist) >= 20:
             momentum = (hist['Close'].iloc[-1] / hist['Close'].iloc[-20] - 1) * 100
         else:
             momentum = (hist['Close'].iloc[-1] / hist['Close'].iloc[0] - 1) * 100
         
-        # NDI
         ndi = sentiment - (momentum / 100)
         ndi = max(-2.0, min(2.0, ndi))
         
-        # Régimen
         if ndi > 1.5:
             regime = "Overheating"
             regime_color = "red"
@@ -476,7 +553,6 @@ def api_prices(ticker):
             regime = "Aligned"
             regime_color = "green"
         
-        # Historial para gráficos
         price_history = []
         for i in range(max(0, len(hist) - 60), len(hist)):
             price_history.append({
@@ -484,7 +560,6 @@ def api_prices(ticker):
                 'close': round(hist['Close'].iloc[i], 2)
             })
         
-        # Recomendación
         if ndi > 1.5:
             recommendation = f"{ticker} shows strong overheating divergence (NDI: +{ndi:.3f}). Market narrative has significantly outpaced price action. Historical data suggests elevated risk of short-term correction."
         elif ndi > 0.5:
@@ -520,9 +595,15 @@ def api_signals_live():
     
     results = []
     for ticker in tickers_list:
-        data = get_ticker_data_sync(ticker)
+        # Intentar con Finnhub primero
+        data = get_stock_data_finnhub(ticker)
         if 'error' not in data:
             results.append(data)
+        else:
+            # Si Finnhub falla, intentar con yfinance
+            data = get_ticker_data_sync(ticker)
+            if 'error' not in data:
+                results.append(data)
     
     return jsonify({
         'success': True,
