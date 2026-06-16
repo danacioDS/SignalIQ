@@ -1,7 +1,7 @@
 """SignalIQ API - Production Hardened"""
 
 print("=" * 60)
-print("SIGNALIQ BUILD 2026-06-12")
+print("SIGNALIQ BUILD 2026-06-16")
 print("FILE:", __file__)
 print("=" * 60)
 
@@ -11,18 +11,20 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from datetime import datetime
 import os
+import json
+import logging
+import re as _re
+import yfinance as yf
 import google.generativeai as genai
 
 from app.scoring.signal_score import SignalIQScore
 from app.classification.event_classifier import EventClassifier
 from app.db import init_pool, close_pool, execute_query, execute_query_one, get_connection, put_connection
+from app.llm_service import llm_service
 
 # ============================================================
 # STRUCTURED LOGGING (additive, prints preserved)
 # ============================================================
-import logging
-import json
-
 USE_JSON_LOGS = os.environ.get('USE_JSON_LOGS', 'true').lower() == 'true'
 
 class JSONFormatter(logging.Formatter):
@@ -70,11 +72,6 @@ limiter = Limiter(
 signal_scorer = SignalIQScore()
 event_classifier = EventClassifier()
 
-static_dir = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "static"
-)
-
 # ============================================================
 # GEMINI
 # ============================================================
@@ -119,11 +116,8 @@ if os.environ.get("DATABASE_URL"):
 # INPUT VALIDATION
 # ============================================================
 
-import re as _re
-
 _TICKER_RE = _re.compile(r"^[A-Z0-9-]{1,10}$")
 _MAX_TICKER_LEN = 10
-
 
 def _validate_ticker(ticker: str) -> str | None:
     """Validate and normalise a ticker symbol.
@@ -138,7 +132,6 @@ def _validate_ticker(ticker: str) -> str | None:
     if not _TICKER_RE.match(cleaned):
         return "Ticker symbol must be 1-10 alphanumeric characters or hyphens"
     return None
-
 
 def _validate_date_range(start_str: str | None, end_str: str | None) -> list[str]:
     """Validate an optional date range (start/end).
@@ -173,7 +166,6 @@ def _validate_date_range(start_str: str | None, end_str: str | None) -> list[str
 
     return errors
 
-
 def _validate_classify_input(data: dict) -> list[str]:
     """Validate the JSON body for the ``/api/classify`` endpoint."""
     errors = []
@@ -194,9 +186,75 @@ def _validate_classify_input(data: dict) -> list[str]:
         errors.append(f"'content' exceeds maximum length of {max_len} characters")
     return errors
 
+def get_ticker_data_sync(ticker: str) -> dict:
+    """Obtiene datos de Yahoo Finance para un ticker (versión síncrona)."""
+    ticker = ticker.upper()
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period='6mo')
+        
+        if hist.empty:
+            return {'ticker': ticker, 'error': 'No data found'}
+        
+        current_price = hist['Close'].iloc[-1]
+        prev_price = hist['Close'].iloc[-5] if len(hist) >= 5 else hist['Close'].iloc[0]
+        
+        # Sentimiento calculado desde precios
+        if len(hist) > 1:
+            daily_return = hist['Close'].pct_change().iloc[-1]
+            sentiment = 0.5 + (daily_return * 0.5)
+        else:
+            sentiment = 0.5
+        sentiment = max(0.1, min(0.9, sentiment))
+        
+        # Momentum (20 días)
+        if len(hist) >= 20:
+            momentum = (hist['Close'].iloc[-1] / hist['Close'].iloc[-20] - 1) * 100
+        else:
+            momentum = (hist['Close'].iloc[-1] / hist['Close'].iloc[0] - 1) * 100
+        
+        # NDI simplificado
+        ndi = sentiment - (momentum / 100)
+        ndi = max(-2.0, min(2.0, ndi))
+        
+        # Determinar régimen
+        if ndi > 1.5:
+            regime = "Overheating"
+            color = "red"
+        elif ndi > 0.5:
+            regime = "Watching"
+            color = "yellow"
+        else:
+            regime = "Aligned"
+            color = "green"
+        
+        # Historial de precios para gráficos
+        price_history = []
+        for i in range(max(0, len(hist) - 60), len(hist)):
+            price_history.append({
+                'date': hist.index[i].strftime('%Y-%m-%d'),
+                'close': round(hist['Close'].iloc[i], 2)
+            })
+        
+        return {
+            'ticker': ticker,
+            'current_price': round(current_price, 2),
+            'prev_price': round(prev_price, 2),
+            'sentiment': round(sentiment, 3),
+            'momentum': round(momentum, 2),
+            'ndi': round(ndi, 3),
+            'regime': regime,
+            'color': color,
+            'confidence': round(70 + (abs(ndi) * 15), 1),
+            'recommendation': f"{ticker} shows {regime.lower()} divergence.",
+            'price_history': price_history
+        }
+    except Exception as e:
+        log_error(f"Error fetching data for {ticker}: {str(e)}")
+        return {'ticker': ticker, 'error': str(e)}
 
 # ============================================================
-# API ROUTES
+# API ROUTES (TODAS LAS RUTAS DE API DEBEN IR ANTES DEL CATCHALL)
 # ============================================================
 
 @app.route("/api/health")
@@ -211,7 +269,7 @@ def api_health():
 def api_version():
     return jsonify({
         "service": "SignalIQ",
-        "version": "2026-06-12",
+        "version": "2026-06-16",
         "build": "production_hardening"
     })
 
@@ -360,8 +418,128 @@ def api_analyze(ticker):
         return jsonify({"error": str(e)}), 500
 
 # ============================================================
-# FRONTEND (VA AL FINAL, DESPUÉS DE TODAS LAS API ROUTES)
+# NUEVOS ENDPOINTS PARA PRECIOS DE YAHOO FINANCE
 # ============================================================
+
+@app.route('/api/prices/<ticker>')
+@limiter.limit("10 per minute")
+def api_prices(ticker):
+    """Obtiene datos de precios y NDI para un ticker específico."""
+    err = _validate_ticker(ticker)
+    if err:
+        return jsonify({'error': err}), 400
+    
+    ticker = ticker.strip().upper()
+    period = request.args.get('period', '6mo')
+    interval = request.args.get('interval', '1d')
+    
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period=period, interval=interval)
+        
+        if hist.empty:
+            return jsonify({
+                'error': f'No data found for ticker: {ticker}',
+                'ticker': ticker
+            }), 404
+        
+        # Datos básicos
+        current_price = hist['Close'].iloc[-1]
+        prev_price = hist['Close'].iloc[-5] if len(hist) >= 5 else hist['Close'].iloc[0]
+        
+        # Sentimiento desde precios
+        if len(hist) > 1:
+            daily_return = hist['Close'].pct_change().iloc[-1]
+            sentiment = 0.5 + (daily_return * 0.5)
+        else:
+            sentiment = 0.5
+        sentiment = max(0.1, min(0.9, sentiment))
+        
+        # Momentum
+        if len(hist) >= 20:
+            momentum = (hist['Close'].iloc[-1] / hist['Close'].iloc[-20] - 1) * 100
+        else:
+            momentum = (hist['Close'].iloc[-1] / hist['Close'].iloc[0] - 1) * 100
+        
+        # NDI
+        ndi = sentiment - (momentum / 100)
+        ndi = max(-2.0, min(2.0, ndi))
+        
+        # Régimen
+        if ndi > 1.5:
+            regime = "Overheating"
+            regime_color = "red"
+        elif ndi > 0.5:
+            regime = "Watching"
+            regime_color = "yellow"
+        else:
+            regime = "Aligned"
+            regime_color = "green"
+        
+        # Historial para gráficos
+        price_history = []
+        for i in range(max(0, len(hist) - 60), len(hist)):
+            price_history.append({
+                'date': hist.index[i].strftime('%Y-%m-%d'),
+                'close': round(hist['Close'].iloc[i], 2)
+            })
+        
+        # Recomendación
+        if ndi > 1.5:
+            recommendation = f"{ticker} shows strong overheating divergence (NDI: +{ndi:.3f}). Market narrative has significantly outpaced price action. Historical data suggests elevated risk of short-term correction."
+        elif ndi > 0.5:
+            recommendation = f"{ticker} shows accumulating divergence. Positive momentum still supports the narrative, but the gap is widening. Maintain position with active monitoring."
+        else:
+            recommendation = f"{ticker} in aligned regime. Divergence within normal ranges. Hold position."
+        
+        return jsonify({
+            'success': True,
+            'ticker': ticker,
+            'current_price': round(current_price, 2),
+            'prev_price': round(prev_price, 2),
+            'sentiment': round(sentiment, 3),
+            'momentum': round(momentum, 2),
+            'ndi': round(ndi, 3),
+            'regime': regime,
+            'regime_color': regime_color,
+            'confidence': round(70 + (abs(ndi) * 15), 1),
+            'recommendation': recommendation,
+            'price_history': price_history
+        })
+        
+    except Exception as e:
+        log_error(f"Error fetching prices for {ticker}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/signals-live')
+@limiter.limit("30 per minute")
+def api_signals_live():
+    """Obtiene señales en vivo para múltiples tickers."""
+    tickers_param = request.args.get('tickers', 'NVDA,AAPL,MSFT,TSLA,GOOGL,META,AMD,AMZN,JPM,XOM,KO')
+    tickers_list = [t.strip().upper() for t in tickers_param.split(',') if t.strip()]
+    
+    results = []
+    for ticker in tickers_list:
+        data = get_ticker_data_sync(ticker)
+        if 'error' not in data:
+            results.append(data)
+    
+    return jsonify({
+        'success': True,
+        'count': len(results),
+        'signals': results,
+        'timestamp': datetime.now().isoformat()
+    })
+
+# ============================================================
+# FRONTEND (VA AL FINAL - SOLO DESPUÉS DE TODAS LAS API ROUTES)
+# ============================================================
+
+static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+
+# Si el directorio static no existe, crearlo
+if not os.path.exists(static_dir):
+    os.makedirs(static_dir, exist_ok=True)
 
 @app.route("/")
 def frontend_root():
@@ -369,13 +547,17 @@ def frontend_root():
 
 @app.route("/<path:path>")
 def frontend_catchall(path):
-    """Sirve archivos estáticos o index.html para React routing"""
-    file_path = os.path.join(static_dir, path)
-
-    if os.path.exists(file_path) and os.path.isfile(file_path):
-        return send_from_directory(static_dir, path)
-
-    # Para rutas de React como /ticker/NVDA
+    """Sirve archivos estáticos o index.html para React routing.
+    
+    NOTA: Esta ruta solo se ejecuta si ninguna de las rutas de API anteriores coincide.
+    """
+    # Verificar si es un archivo estático (con extensión)
+    if '.' in path and not path.startswith('api/'):
+        file_path = os.path.join(static_dir, path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return send_from_directory(static_dir, path)
+    
+    # Para rutas de React (como /ticker/NVDA) - servir index.html
     return send_from_directory(static_dir, "index.html")
 
 # ============================================================
@@ -391,72 +573,11 @@ if __name__ == "__main__":
     print(f"📍 Port: {port}")
     print(f"📁 Static dir: {static_dir}")
     print(f"🔧 Mode: {'REAL' if model else 'MOCK'}")
+    print(f"📊 Yahoo Finance: {'ENABLED'}")
+    print(f"📋 API Routes: {len([r for r in app.url_map.iter_rules() if r.rule.startswith('/api')])}")
     print("=" * 60 + "\n")
 
     app.run(
         host="0.0.0.0",
         port=port
     )
-@app.route('/api/analyze-llm/<ticker>')
-@handle_errors
-def api_analyze_llm(ticker):
-    """Analiza un ticker con IA y devuelve NDI + análisis"""
-    is_valid, result = validate_ticker(ticker)
-    if not is_valid:
-        return jsonify({'error': result, 'type': 'validation'}), 400
-    ticker = result
-    
-    # Obtener NDI real desde la base de datos
-    conn = None
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT ndi, sentiment_zscore, momentum_zscore 
-            FROM layer4.signals 
-            WHERE ticker = %s 
-            ORDER BY signal_date DESC 
-            LIMIT 1
-        """, (ticker,))
-        row = cur.fetchone()
-        
-        if row:
-            ndi = float(row[0])
-            sentiment = float(row[1]) if row[1] else None
-            momentum = float(row[2]) if row[2] else None
-        else:
-            # Si no hay señal, calcular NDI básico
-            ndi = 0.5
-            sentiment = None
-            momentum = None
-            
-    finally:
-        if conn:
-            return_db(conn)
-    
-    # Generar análisis con IA
-    from app.llm_service import llm_service
-    analysis = llm_service.analyze_ticker(ticker, ndi, sentiment, momentum)
-    
-    # Determinar régimen
-    if ndi > 0.7:
-        regime = "Overheating Divergence"
-        regime_color = "red"
-    elif ndi > 0.3:
-        regime = "Accumulation Divergence"
-        regime_color = "yellow"
-    else:
-        regime = "Aligned"
-        regime_color = "green"
-    
-    return jsonify({
-        'success': True,
-        'ticker': ticker,
-        'ndi': round(ndi, 3),
-        'regime': regime,
-        'regime_color': regime_color,
-        'sentiment': round(sentiment, 2) if sentiment else None,
-        'momentum': round(momentum, 2) if momentum else None,
-        'confidence': round(0.5 + abs(ndi) * 0.5, 2) if ndi else 0.5,
-        'analysis': analysis
-    })
