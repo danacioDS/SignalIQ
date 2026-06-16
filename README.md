@@ -1,7 +1,4 @@
 
----
-
-```markdown
 # ✅✅ SignalIQ ✅✅
 
 > Where market narratives meet market reality.
