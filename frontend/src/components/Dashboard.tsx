@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { C } from "./styles";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import TickerAnalysis from "./TickerAnalysis";
+// Importación dinámica para TickerAnalysis
+const TickerAnalysis = React.lazy(() => import('./TickerAnalysis'));
 
 // ── Sector colors ─────────────────────────────────────────────────────────────
 const sectorColors: Record<string, string> = {
@@ -178,10 +179,27 @@ export default function Dashboard() {
   // ── Si hay un ticker seleccionado, mostrar Capa 2 ──────────────────────────
   if (selectedTicker) {
     return (
-      <TickerAnalysis
-        ticker={selectedTicker}
-        onBack={() => setSelectedTicker(null)}
-      />
+      <React.Suspense fallback={
+        <div style={{ 
+          padding: "40px", 
+          textAlign: "center", 
+          color: C.muted,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "60vh"
+        }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
+          <div style={{ fontSize: 18 }}>Cargando análisis para {selectedTicker}...</div>
+          <div style={{ fontSize: 13, marginTop: 8, color: C.dim }}>Esto puede tomar unos segundos</div>
+        </div>
+      }>
+        <TickerAnalysis
+          ticker={selectedTicker}
+          onBack={() => setSelectedTicker(null)}
+        />
+      </React.Suspense>
     );
   }
 

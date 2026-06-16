@@ -246,3 +246,14 @@ git add README.md
 git commit -m "docs: README completo con easy deploy y emergency recovery"
 git push origin main
 ```
+
+cd ~/repo_lab/SignalIQ/frontend && \
+rm -rf node_modules/.cache build && \
+CI=false npm run build && \
+echo "=== CHUNKS GENERADOS ===" && \
+ls -lh build/static/js/*.chunk.js && \
+echo "=== BUSCANDO TickerAnalysis ===" && \
+grep -r "TickerAnalysis" build/static/js/*.chunk.js 2>/dev/null | head -3 && \
+echo "=== DESPLEGANDO ===" && \
+CI=false vercel --prod --force && \
+echo "✅ ¡COMPLETADO! Abre https://signaliq-zeta.vercel.app"

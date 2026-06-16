@@ -34,7 +34,6 @@ export default function TickerAnalysis({ ticker, onBack }: TickerAnalysisProps) 
         if (result.error) throw new Error(result.error);
         setData(result);
         if (result.price_history && result.price_history.length > 0) {
-          // Normalizar historial
           const prices = result.price_history.map((item: any) => item.close);
           const min = Math.min(...prices);
           const max = Math.max(...prices);
