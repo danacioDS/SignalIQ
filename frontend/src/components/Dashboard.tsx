@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { C, getRegime } from "./styles";
+import { C } from "./styles";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -15,6 +15,14 @@ const sectorColors: Record<string, string> = {
   'Semiconductors': '#ec4899',
 };
 
+// ── Iconos de régimen ────────────────────────────────────────────────────────
+const regimeIcon: Record<string, string> = {
+  'Overheating': '🔴',
+  'Watching': '🟡',
+  'Aligned': '🟢',
+  'Undervalued': '🔵',
+};
+
 export default function Dashboard() {
   const [selectedSector, setSelectedSector] = useState("All");
   const [signals, setSignals] = useState<any[]>([]);
@@ -24,7 +32,7 @@ export default function Dashboard() {
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [priceHistory, setPriceHistory] = useState<any[]>([]);
-  const [currentTicker, setCurrentTicker] = useState("");
+  const [selectedTicker, setSelectedTicker] = useState("");
 
   // ── Mapeo de sectores ──────────────────────────────────────────────────────
   const sectorMap: Record<string, string> = {
@@ -65,6 +73,9 @@ export default function Dashboard() {
             confidence: item.confidence || 70,
           }));
           setSignals(formatted);
+          if (formatted.length > 0) {
+            setSelectedTicker(formatted[0].ticker);
+          }
         } else {
           setError("No data available from the API.");
           setSignals([]);
@@ -83,7 +94,7 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // ── Calcular métricas desde datos reales ──────────────────────────────────
+  // ── Calcular métricas ──────────────────────────────────────────────────────
   const sectors = ["All", ...Array.from(new Set(signals.map(s => s.sector)))];
   const filteredSignals = selectedSector === "All" 
     ? signals 
@@ -102,7 +113,7 @@ export default function Dashboard() {
     color: sectorColors[sector] || C.muted
   }));
 
-  // ── KPIs desde datos reales ─────────────────────────────────────────────────
+  // ── KPIs ────────────────────────────────────────────────────────────────────
   const avgNDI = signals.length > 0 
     ? signals.reduce((sum, s) => sum + s.ndi, 0) / signals.length 
     : 0;
@@ -144,17 +155,18 @@ export default function Dashboard() {
   const analyzeTicker = async () => {
     const ticker = tickerInput.trim().toUpperCase();
     if (!ticker) return;
+    
     setAnalyzing(true);
     setError("");
     setAnalysisResult(null);
-    setPriceHistory([]);
+    
     try {
       const response = await fetch(`https://signaliq-api.onrender.com/api/prices/${ticker}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       if (data.error) throw new Error(data.error);
       setAnalysisResult(data);
-      setCurrentTicker(ticker);
+      setSelectedTicker(ticker);
       if (data.price_history && data.price_history.length > 0) {
         setPriceHistory(data.price_history);
       }
@@ -229,7 +241,7 @@ export default function Dashboard() {
       {/* Grid de señales */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 32 }}>
         {filteredSignals.map((s) => {
-          const regime = getRegime(s.ndi);
+          const icon = regimeIcon[s.regime] || '🟡';
           return (
             <div 
               key={s.ticker} 
@@ -265,7 +277,7 @@ export default function Dashboard() {
                 display: "inline-block",
                 fontWeight: 600,
               }}>
-                {regime.icon} {regime.label}
+                {icon} {s.regime}
               </div>
               <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>
                 ${s.price || 'N/A'}
@@ -306,16 +318,16 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Gráfico - DATOS REALES de la API */}
+      {/* Gráfico - Precio History de la API */}
       <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px", marginBottom: 24 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>
-          📈 NDI Evolution {currentTicker ? `(${currentTicker})` : '(Select a ticker)'}
+          📈 Price Evolution {selectedTicker ? `(${selectedTicker})` : ''}
         </h3>
         {priceHistory.length > 0 ? (
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={priceHistory}>
               <defs>
-                <linearGradient id="gReal" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="gPrice" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={C.accent} stopOpacity={0.3} />
                   <stop offset="95%" stopColor={C.accent} stopOpacity={0} />
                 </linearGradient>
@@ -324,7 +336,7 @@ export default function Dashboard() {
               <XAxis dataKey="date" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={{ background: C.sidebar, border: `1px solid ${C.cardBorder}`, borderRadius: 8 }} />
-              <Area type="monotone" dataKey="close" name="Price" stroke={C.accent} strokeWidth={2} fill="url(#gReal)" />
+              <Area type="monotone" dataKey="close" name="Price" stroke={C.accent} strokeWidth={2} fill="url(#gPrice)" />
             </AreaChart>
           </ResponsiveContainer>
         ) : (

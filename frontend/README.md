@@ -44,3 +44,144 @@ You don’t have to ever use `eject`. The curated feature set is suitable for sm
 You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
 
 To learn React, check out the [React documentation](https://reactjs.org/).
+
+
+#### Deploy 
+
+## 🚀 **CÓDIGO PARA DESPLEGAR**
+
+---
+
+## 📋 **PASO 1: SUBIR CAMBIOS A GITHUB**
+
+```bash
+cd ~/repo_lab/SignalIQ
+
+# Verificar estado
+git status
+
+# Agregar todos los cambios
+git add .
+
+# Commit con mensaje
+git commit -m "feat: nuevo dashboard sin hardcode, arquitectura mejorada y secciones académicas"
+
+# Subir a GitHub
+git push origin main
+```
+
+---
+
+## 📋 **PASO 2: DESPLEGAR FRONTEND EN VERCEL**
+
+```bash
+cd ~/repo_lab/SignalIQ/frontend
+
+# 1. Instalar dependencias (si es necesario)
+npm install
+
+# 2. Build de producción
+npm run build
+
+# 3. Desplegar a Vercel
+CI=false vercel --prod --force
+```
+
+### Cuando Vercel te pregunte:
+
+```text
+? Which team? → Daniel Canedo's projects
+? Link to existing project? → yes
+? Which project? → signaliq
+? Would you like to pull environment variables now? → no
+```
+
+---
+
+## 📋 **PASO 3: DESPLEGAR BACKEND EN RENDER**
+
+**Desde el Dashboard de Render:**
+
+1. **Ve a:** https://dashboard.render.com
+2. **Selecciona el servicio** `signaliq-api`
+3. **Ve a:** Manual Deploy → **"Deploy latest commit"**
+4. **Espera a que termine** (2-3 minutos)
+
+**O desde la terminal (si tienes CLI de Render):**
+
+```bash
+# Si no tienes el CLI, instalar:
+npm install -g render-cli
+
+# Luego:
+render deploy --service signaliq-api
+```
+
+---
+
+## 📋 **PASO 4: VERIFICAR DEPLOY**
+
+```bash
+# 1. Verificar frontend
+curl -I https://signaliq-zeta.vercel.app
+
+# 2. Verificar backend
+curl https://signaliq-api.onrender.com/api/health
+
+# 3. Probar señales en vivo
+curl https://signaliq-api.onrender.com/api/signals-live?tickers=NVDA,AAPL,MSFT
+
+# 4. Probar precios
+curl https://signaliq-api.onrender.com/api/prices/NVDA
+```
+
+---
+
+## 📋 **COMANDO ÚNICO (COPY-PASTE)**
+
+Si quieres hacer todo de una vez:
+
+```bash
+cd ~/repo_lab/SignalIQ && \
+git add . && \
+git commit -m "feat: nuevo dashboard sin hardcode, arquitectura mejorada" && \
+git push origin main && \
+cd frontend && \
+npm run build && \
+CI=false vercel --prod --force
+```
+
+---
+
+## ✅ **URLS DE PRODUCCIÓN**
+
+| Componente | URL |
+|------------|-----|
+| **Frontend** | `https://signaliq-zeta.vercel.app` |
+| **Backend** | `https://signaliq-api.onrender.com` |
+| **GitHub** | `https://github.com/danacioDS/SignalIQ` |
+
+---
+
+## 🔧 **SI EL DEPLOY FALLA**
+
+### Frontend (Vercel):
+```bash
+# Ver el error
+npm run build 2>&1 | tail -50
+
+# Si es problema de dependencias:
+rm -rf node_modules package-lock.json
+npm install
+npm run build
+CI=false vercel --prod --force
+```
+
+### Backend (Render):
+- **Ve a los logs** en Render Dashboard
+- **Busca el error** y pégamelo aquí
+- **O reinicia el servicio** desde Render Dashboard
+
+---
+
+**¿Ya ejecutaste el deploy?** 🚀
