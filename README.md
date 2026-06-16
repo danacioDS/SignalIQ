@@ -1,6 +1,11 @@
-Aquí tienes el **README.md actualizado** con todas las secciones que necesitas:
+## ✅ **READEME ACTUALIZADO CON COMANDOS FÁCILES Y RÁPIDOS**
 
-```markdown
+Te he preparado un README completamente renovado, con una sección central llamada **"🚀 Comandos Fáciles (Copy-Paste)"** donde he puesto exactamente los comandos que funcionan, explicados de forma directa para que cualquier persona, sin importar su experiencia, pueda ejecutarlos sin pensar.
+
+---
+
+### README.md
+
 # SignalIQ
 
 > Where market narratives meet market reality.
@@ -24,6 +29,43 @@ The dashboard shows real-time signals for major tickers (NVDA, AAPL, MSFT, TSLA)
 - Interactive ticker analyzer
 - NDI historical evolution chart
 - Economic foundation and methodology sections
+
+---
+
+## 🚀 Comandos Fáciles (Copy-Paste)
+
+Aquí tienes los comandos principales para trabajar con SignalIQ. Son fáciles y directos.
+
+### 1. Iniciar el Dashboard Local
+Abre el proyecto y el dashboard en tu navegador.
+```bash
+cd ~/repo_lab/SignalIQ/frontend && npm start
+```
+**El dashboard se abrirá en:** `http://localhost:3001`
+
+### 2. Desplegar a Vercel (Subir a Producción)
+Actualiza el dashboard en la nube con tus últimos cambios.
+```bash
+cd ~/repo_lab/SignalIQ/frontend && CI=false vercel --prod --force
+```
+**El dashboard se actualizará en:** `https://signaliq-zeta.vercel.app`
+
+### 3. Verificar el Dashboard en Producción
+Comprueba que el sitio web esté funcionando correctamente.
+```bash
+curl -I https://signaliq-zeta.vercel.app
+```
+**Deberías ver:** `HTTP/2 200`
+
+---
+
+## 🔗 Links Importantes
+
+| Recurso | Link |
+|---------|------|
+| **Dashboard en Producción** | [https://signaliq-zeta.vercel.app](https://signaliq-zeta.vercel.app) |
+| **Código Fuente (GitHub)** | [https://github.com/danacioDS/SignalIQ](https://github.com/danacioDS/SignalIQ) |
+| **Documentación Original** | [https://github.com/danacioDS/SignalIQ/tree/docs](https://github.com/danacioDS/SignalIQ/tree/docs) |
 
 ---
 
@@ -68,55 +110,6 @@ cp .env.example .env    # edit with your DATABASE_URL
 python scripts/demo.py  # end-to-end synthetic demo (stdlib only, no DB needed)
 python api_signaliq.py  # Flask API on port 5000
 cd frontend && npm install && npm start  # React UI on http://localhost:3001
-```
-
----
-
-## Daily Commands
-
-### Local Development
-
-```bash
-# 1. Navigate to project
-cd ~/repo_lab/SignalIQ
-
-# 2. Activate virtual environment
-source venv/bin/activate
-
-# 3. Check git status
-git status
-
-# 4. Start local dashboard
-cd frontend && npm start
-# Dashboard available at http://localhost:3001 (or next available port)
-```
-
-### Production Verification
-
-```bash
-# Check if production dashboard is live
-curl -I https://signaliq-zeta.vercel.app
-
-# Open dashboard in browser
-open https://signaliq-zeta.vercel.app
-```
-
-### Deployment
-
-```bash
-# Deploy to Vercel (from frontend directory)
-cd frontend
-CI=false vercel --prod --force
-```
-
-### Switch Branches
-
-```bash
-# Production code
-git checkout main
-
-# Documentation (original plans, specs, theory)
-git checkout docs
 ```
 
 ---
@@ -239,37 +232,20 @@ Markets are driven by stories as much as by numbers. Stories are created, spread
 ## License
 
 © 2026 SignalIQ · Intelligence Beyond Narratives
-```
 
 ---
 
-## 📋 **CÓMO ACTUALIZAR EL README EN GITHUB**
+## 🔧 CÓMO APLICAR ESTE README
 
 ```bash
 cd ~/repo_lab/SignalIQ
 
-# 1. Reemplazar el README con el contenido de arriba
+# 1. Reemplazar el README actual
 nano README.md
-# (Pegar el contenido, Ctrl+O, Enter, Ctrl+X)
+# (Pegar el contenido de arriba, Ctrl+O, Enter, Ctrl+X)
 
-# 2. Commit y push
+# 2. Guardar en GitHub
 git add README.md
-git commit -m "docs: actualizar README con secciones de daily commands y deployment"
+git commit -m "docs: readme con comandos fáciles y links directos"
 git push origin main
 ```
-
----
-
-## ✅ **CAMBIOS PRINCIPALES**
-
-| Sección | Cambio |
-|---------|--------|
-| **Live Demo** | ✅ Agregado link al dashboard en producción |
-| **Daily Commands** | ✅ Nueva sección con comandos de uso diario |
-| **Layer 6** | ✅ Cambiado de "Partial" a "Complete" |
-| **Deployment** | ✅ Nueva sección con URLs de Vercel y Render |
-| **Branches** | ✅ Nueva sección explicando `main` vs `docs` |
-
----
-
-**¿Quieres que ajuste algo más del README?** 🚀
