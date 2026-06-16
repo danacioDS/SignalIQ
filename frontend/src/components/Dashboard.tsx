@@ -3,6 +3,7 @@ import { C } from "./styles";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
+import TickerAnalysis from "./TickerAnalysis";
 
 // ── Sector colors ─────────────────────────────────────────────────────────────
 const sectorColors: Record<string, string> = {
@@ -32,7 +33,7 @@ export default function Dashboard() {
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [priceHistory, setPriceHistory] = useState<any[]>([]);
-  const [selectedTicker, setSelectedTicker] = useState("");
+  const [selectedTicker, setSelectedTicker] = useState<string | null>(null); // ← CAMBIADO
 
   // ── Mapeo de sectores ──────────────────────────────────────────────────────
   const sectorMap: Record<string, string> = {
@@ -74,7 +75,7 @@ export default function Dashboard() {
           }));
           setSignals(formatted);
           if (formatted.length > 0) {
-            setSelectedTicker(formatted[0].ticker);
+            // No seleccionar automáticamente
           }
         } else {
           setError("No data available from the API.");
@@ -166,7 +167,6 @@ export default function Dashboard() {
       const data = await response.json();
       if (data.error) throw new Error(data.error);
       setAnalysisResult(data);
-      setSelectedTicker(ticker);
       if (data.price_history && data.price_history.length > 0) {
         setPriceHistory(data.price_history);
       }
@@ -177,6 +177,16 @@ export default function Dashboard() {
       setAnalyzing(false);
     }
   };
+
+  // ── Si hay un ticker seleccionado, mostrar Capa 2 ──────────────────────────
+  if (selectedTicker) {
+    return (
+      <TickerAnalysis
+        ticker={selectedTicker}
+        onBack={() => setSelectedTicker(null)}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -238,7 +248,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Grid de señales */}
+      {/* Grid de señales - ahora navega a Capa 2 */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 32 }}>
         {filteredSignals.map((s) => {
           const icon = regimeIcon[s.regime] || '🟡';
@@ -256,8 +266,7 @@ export default function Dashboard() {
                 overflow: "hidden",
               }}
               onClick={() => {
-                setTickerInput(s.ticker);
-                analyzeTicker();
+                setSelectedTicker(s.ticker); // ← Navega a Capa 2
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -318,7 +327,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Gráfico - Precio History de la API */}
+      {/* Gráfico - Price History */}
       <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px", marginBottom: 24 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>
           📈 Price Evolution {selectedTicker ? `(${selectedTicker})` : ''}

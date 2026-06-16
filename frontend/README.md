@@ -1,150 +1,106 @@
-# Getting Started with Create React App
+## ✅ **README COMPLETO Y PRÁCTICO**
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+# SignalIQ
 
-## Available Scripts
+> Where market narratives meet market reality.
 
-In the project directory, you can run:
+SignalIQ is a market intelligence framework that measures the distance between what the market is *saying* (news sentiment) and what the market is *actually doing* (price momentum). It quantifies this gap using the **Narrative Divergence Index (NDI)**:
 
-### `npm start`
-
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
-
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
-
-### `npm test`
-
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
-
-### `npm run build`
-
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
-
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
-
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-
-#### Deploy 
-
-## 🚀 **CÓDIGO PARA DESPLEGAR**
-
----
-
-## 📋 **PASO 1: SUBIR CAMBIOS A GITHUB**
-
-```bash
-cd ~/repo_lab/SignalIQ
-
-# Verificar estado
-git status
-
-# Agregar todos los cambios
-git add .
-
-# Commit con mensaje
-git commit -m "feat: nuevo dashboard sin hardcode, arquitectura mejorada y secciones académicas"
-
-# Subir a GitHub
-git push origin main
+```
+NDI = sentiment_zscore − momentum_zscore
 ```
 
 ---
 
-## 📋 **PASO 2: DESPLEGAR FRONTEND EN VERCEL**
+## 🚀 **Live Demo**
+
+**Production Dashboard:** [https://signaliq-zeta.vercel.app](https://signaliq-zeta.vercel.app)
+
+The dashboard shows real-time signals for major tickers with:
+- NDI values and regime classification (Overheating, Watching, Aligned)
+- Interactive ticker analyzer
+- Sector performance visualization
+- Economic foundation and methodology sections
+
+---
+
+## ⚡ **Quick Start**
+
+### 1. Clone the repository
 
 ```bash
-cd ~/repo_lab/SignalIQ/frontend
+git clone https://github.com/danacioDS/SignalIQ.git
+cd SignalIQ
+```
 
-# 1. Instalar dependencias (si es necesario)
+### 2. Set up Python environment
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements_layer1.txt
+```
+
+### 3. Start the local frontend
+
+```bash
+cd frontend
 npm install
+npm start
+```
 
-# 2. Build de producción
+**Dashboard will open at:** `http://localhost:3001`
+
+### 4. (Optional) Start the backend API
+
+```bash
+cd backend
+cp .env.example .env   # edit with your DATABASE_URL
+python app/main.py
+```
+
+**API will be available at:** `http://localhost:10000`
+
+---
+
+## 🚀 **Easy Deploy**
+
+### Deploy Frontend to Vercel
+
+```bash
+cd frontend
 npm run build
-
-# 3. Desplegar a Vercel
 CI=false vercel --prod --force
 ```
 
-### Cuando Vercel te pregunte:
+**When prompted:**
+- Which team? → `Daniel Canedo's projects`
+- Link to existing project? → `yes`
+- Which project? → `signaliq`
+- Environment variables? → `no`
 
-```text
-? Which team? → Daniel Canedo's projects
-? Link to existing project? → yes
-? Which project? → signaliq
-? Would you like to pull environment variables now? → no
-```
+### Deploy Backend to Render
 
----
+1. Go to: https://dashboard.render.com
+2. Select service `signaliq-api`
+3. Manual Deploy → Deploy latest commit
 
-## 📋 **PASO 3: DESPLEGAR BACKEND EN RENDER**
-
-**Desde el Dashboard de Render:**
-
-1. **Ve a:** https://dashboard.render.com
-2. **Selecciona el servicio** `signaliq-api`
-3. **Ve a:** Manual Deploy → **"Deploy latest commit"**
-4. **Espera a que termine** (2-3 minutos)
-
-**O desde la terminal (si tienes CLI de Render):**
+### Verify Deployment
 
 ```bash
-# Si no tienes el CLI, instalar:
-npm install -g render-cli
-
-# Luego:
-render deploy --service signaliq-api
-```
-
----
-
-## 📋 **PASO 4: VERIFICAR DEPLOY**
-
-```bash
-# 1. Verificar frontend
+# Frontend
 curl -I https://signaliq-zeta.vercel.app
 
-# 2. Verificar backend
+# Backend
 curl https://signaliq-api.onrender.com/api/health
-
-# 3. Probar señales en vivo
-curl https://signaliq-api.onrender.com/api/signals-live?tickers=NVDA,AAPL,MSFT
-
-# 4. Probar precios
-curl https://signaliq-api.onrender.com/api/prices/NVDA
 ```
 
----
-
-## 📋 **COMANDO ÚNICO (COPY-PASTE)**
-
-Si quieres hacer todo de una vez:
+### One-Command Deploy
 
 ```bash
 cd ~/repo_lab/SignalIQ && \
 git add . && \
-git commit -m "feat: nuevo dashboard sin hardcode, arquitectura mejorada" && \
+git commit -m "deploy: actualización" && \
 git push origin main && \
 cd frontend && \
 npm run build && \
@@ -153,35 +109,140 @@ CI=false vercel --prod --force
 
 ---
 
-## ✅ **URLS DE PRODUCCIÓN**
+## 🔧 **Emergency Recovery - Stable Version**
 
-| Componente | URL |
-|------------|-----|
-| **Frontend** | `https://signaliq-zeta.vercel.app` |
-| **Backend** | `https://signaliq-api.onrender.com` |
-| **GitHub** | `https://github.com/danacioDS/SignalIQ` |
+### Restore from GitHub Tag
 
----
-
-## 🔧 **SI EL DEPLOY FALLA**
-
-### Frontend (Vercel):
 ```bash
-# Ver el error
-npm run build 2>&1 | tail -50
-
-# Si es problema de dependencias:
-rm -rf node_modules package-lock.json
-npm install
-npm run build
-CI=false vercel --prod --force
+git checkout v2.0.0-stable
 ```
 
-### Backend (Render):
-- **Ve a los logs** en Render Dashboard
-- **Busca el error** y pégamelo aquí
-- **O reinicia el servicio** desde Render Dashboard
+### Restore from Local Backup
+
+```bash
+cd ~/repo_lab
+cp -r SignalIQ_backup_entrevista SignalIQ
+```
+
+### Create New Backup
+
+```bash
+cd ~/repo_lab/SignalIQ && \
+git tag -a v2.0.0-stable -m "Versión estable - $(date)" && \
+git push origin v2.0.0-stable && \
+cd ~/repo_lab && \
+cp -r SignalIQ SignalIQ_backup_$(date +%Y%m%d) && \
+echo "✅ Backup completado"
+```
 
 ---
 
-**¿Ya ejecutaste el deploy?** 🚀
+## 📊 **System Overview**
+
+| Layer | Description | Status |
+|-------|-------------|--------|
+| **1** | Data ingestion (Yahoo Finance + 6 RSS feeds) | Complete |
+| **2** | PostgreSQL persistence | Complete |
+| **3** | NLP intelligence (sentiment + momentum) | Complete |
+| **4** | NDI signal generation | Complete |
+| **5** | Fundamental analysis | Complete |
+| **AI** | LLM Router (Gemini → Groq → GLM) | Complete |
+| **6** | React TypeScript frontend | Complete |
+
+---
+
+## 🏗️ **Architecture**
+
+```
+┌───────────────────────────────┐
+│    Frontend (React + TS)      │
+│    Tailwind + Recharts        │
+└───────────────┬───────────────┘
+                │
+┌───────────────▼───────────────┐
+│       Flask API / Backend     │
+│    (Gunicorn + Flask-Limiter) │
+└───────────────┬───────────────┘
+                │
+        ┌───────┴────────┐
+        │                │
+┌───────▼──────┐  ┌──────▼──────┐
+│   NDI Engine │  │  LLM Router │
+│  (Layer 4)   │  │  (Multi-LLM)│
+└───────┬──────┘  └──────┬──────┘
+        │                │
+        │        ┌───────┴───────┐
+        │        │ Gemini │ Groq │
+        │        │        GLM    │
+        │        └───────┬───────┘
+        │                │
+┌───────▼────────────────▼───────┐
+│    NLP + Entity Resolution     │
+│   Sentiment (Loughran-McDonald)│
+│   Momentum (20-day z-score)    │
+└───────────────┬───────────────┘
+                │
+┌───────────────▼───────────────┐
+│      PostgreSQL (Neon)        │
+└───────────────┬───────────────┘
+                │
+┌───────────────▼───────────────┐
+│    Data Ingestion Layer       │
+│  Yahoo Finance (prices)       │
+│  6 RSS feeds (news)           │
+└───────────────────────────────┘
+```
+
+---
+
+## 🔗 **Important Links**
+
+| Resource | URL |
+|----------|-----|
+| **Production Dashboard** | [https://signaliq-zeta.vercel.app](https://signaliq-zeta.vercel.app) |
+| **Backend API** | [https://signaliq-api.onrender.com](https://signaliq-api.onrender.com) |
+| **Source Code** | [https://github.com/danacioDS/SignalIQ](https://github.com/danacioDS/SignalIQ) |
+| **Stable Release** | `v2.0.0-stable` |
+
+---
+
+## 📋 **Configuration**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | — | PostgreSQL connection string |
+| `PRIMARY_LLM` | `mock` | LLM provider: `gemini`, `groq`, `glm` |
+| `GEMINI_API_KEY` | — | Google Gemini API key |
+| `FINNHUB_API_KEY` | — | Finnhub API key |
+
+---
+
+## 👨‍💻 **Author**
+
+**Daniel Canedo**
+
+- 🤖 ML Engineer at Anyone AI
+- 🎓 MSc. Economics — Yokohama National University
+- 📊 Economist — Universidad Católica Boliviana
+
+---
+
+## 📄 **License**
+
+© 2026 SignalIQ · Intelligence Beyond Narratives
+```
+
+---
+
+## 🚀 **GUARDAR EL README**
+
+```bash
+cd ~/repo_lab/SignalIQ
+nano README.md
+# (Pegar el contenido de arriba)
+# Ctrl+O, Enter, Ctrl+X
+
+git add README.md
+git commit -m "docs: README completo con easy deploy y emergency recovery"
+git push origin main
+```
