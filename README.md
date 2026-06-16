@@ -1,3 +1,6 @@
+Aquí tienes el **README.md actualizado** con todas las secciones que necesitas:
+
+```markdown
 # SignalIQ
 
 > Where market narratives meet market reality.
@@ -9,6 +12,18 @@ NDI = sentiment_zscore − momentum_zscore
 ```
 
 When narrative runs ahead of price action, SignalIQ flags it as exhaustion, distribution, or severe divergence — not a prediction, but a systematic measurement of risk conditions.
+
+---
+
+## 🚀 Live Demo
+
+**Production Dashboard:** [https://signaliq-zeta.vercel.app](https://signaliq-zeta.vercel.app)
+
+The dashboard shows real-time signals for major tickers (NVDA, AAPL, MSFT, TSLA) with:
+- NDI values and regime classification (Overheating, Watching, Aligned)
+- Interactive ticker analyzer
+- NDI historical evolution chart
+- Economic foundation and methodology sections
 
 ---
 
@@ -52,7 +67,56 @@ echo 'source venv/bin/activate' > .envrc && direnv allow
 cp .env.example .env    # edit with your DATABASE_URL
 python scripts/demo.py  # end-to-end synthetic demo (stdlib only, no DB needed)
 python api_signaliq.py  # Flask API on port 5000
-cd frontend && npm install && npm start  # React UI
+cd frontend && npm install && npm start  # React UI on http://localhost:3001
+```
+
+---
+
+## Daily Commands
+
+### Local Development
+
+```bash
+# 1. Navigate to project
+cd ~/repo_lab/SignalIQ
+
+# 2. Activate virtual environment
+source venv/bin/activate
+
+# 3. Check git status
+git status
+
+# 4. Start local dashboard
+cd frontend && npm start
+# Dashboard available at http://localhost:3001 (or next available port)
+```
+
+### Production Verification
+
+```bash
+# Check if production dashboard is live
+curl -I https://signaliq-zeta.vercel.app
+
+# Open dashboard in browser
+open https://signaliq-zeta.vercel.app
+```
+
+### Deployment
+
+```bash
+# Deploy to Vercel (from frontend directory)
+cd frontend
+CI=false vercel --prod --force
+```
+
+### Switch Branches
+
+```bash
+# Production code
+git checkout main
+
+# Documentation (original plans, specs, theory)
+git checkout docs
 ```
 
 ---
@@ -67,7 +131,7 @@ cd frontend && npm install && npm start  # React UI
 | **4** | NDI signal generation (measurement, persistence, classification, regimes) | Complete | 15 tests, 80+ checks |
 | **5** | Fundamental analysis (valuation, growth, profitability scoring) | Complete | Smoke test |
 | **AI** | LLM Router (Gemini, GLM, Groq) + Flask REST API | Complete | Mock tests |
-| **6** | React TypeScript frontend + HTML institutional dashboards | Partial | — |
+| **6** | React TypeScript frontend + HTML institutional dashboards | Complete | — |
 
 ---
 
@@ -83,6 +147,7 @@ cd frontend && npm install && npm start  # React UI
 ├── web/                  # Standalone HTML dashboards
 ├── config/               # Thresholds + entity aliases
 ├── tests/pytest/         # Pytest suite (single source of truth)
+├── docs/                 # Original project documentation (branch: docs)
 └── logs/                 # Runtime logs (in .gitignore)
 ```
 
@@ -112,10 +177,10 @@ Entity resolution (two-phase: URL param → alias regex), Loughran-McDonald sent
 Valuation (P/E, P/B, P/S), growth (CAGR), profitability (margins, ROE), cash flow (FCF yield), health (D/E). Sector-benchmarked 0–100 score.
 
 ### AI / LLM Layer
-Multi-provider LLM Router: Gemini, GLM (ZhipuAI), Groq, MOCK. Flask API (`api_signaliq.py`) at port 5000.
+Multi-provider LLM Router: Gemini, GLM (ZhipuAI), Groq, MOCK. Flask API at port 5000.
 
 ### Layer 6 — Frontend
-React TypeScript (Recharts, Axios, Tailwind) + HTML dashboards in `web/`.
+React TypeScript (Recharts, Axios, Tailwind) dashboard deployed on Vercel.
 
 ---
 
@@ -144,6 +209,67 @@ pytest tests/pytest/ -m integration -v
 
 ---
 
+## Deployment
+
+### Frontend (Vercel)
+- **Production URL:** [https://signaliq-zeta.vercel.app](https://signaliq-zeta.vercel.app)
+- **Deployment:** Automatic from `main` branch
+
+### Backend (Render)
+- **API URL:** `https://signaliq.onrender.com`
+- **Deployment:** Automatic from `main` branch
+
+---
+
+## Branches
+
+| Branch | Purpose | URL |
+|--------|---------|-----|
+| `main` | Production code (dashboard + backend) | [https://github.com/danacioDS/SignalIQ/tree/main](https://github.com/danacioDS/SignalIQ/tree/main) |
+| `docs` | Original documentation (plans, specs, theory) | [https://github.com/danacioDS/SignalIQ/tree/docs](https://github.com/danacioDS/SignalIQ/tree/docs) |
+
+---
+
 ## Core Idea
 
 Markets are driven by stories as much as by numbers. Stories are created, spread, overheat, and exhaust themselves. Numbers (prices, volatility, volume) are slower and heavier. SignalIQ measures the distance between the hot (narrative) and the cold (prices). When that distance becomes abnormal, SignalIQ reports it.
+
+---
+
+## License
+
+© 2026 SignalIQ · Intelligence Beyond Narratives
+```
+
+---
+
+## 📋 **CÓMO ACTUALIZAR EL README EN GITHUB**
+
+```bash
+cd ~/repo_lab/SignalIQ
+
+# 1. Reemplazar el README con el contenido de arriba
+nano README.md
+# (Pegar el contenido, Ctrl+O, Enter, Ctrl+X)
+
+# 2. Commit y push
+git add README.md
+git commit -m "docs: actualizar README con secciones de daily commands y deployment"
+git push origin main
+```
+
+---
+
+## ✅ **CAMBIOS PRINCIPALES**
+
+| Sección | Cambio |
+|---------|--------|
+| **Live Demo** | ✅ Agregado link al dashboard en producción |
+| **Daily Commands** | ✅ Nueva sección con comandos de uso diario |
+| **Layer 6** | ✅ Cambiado de "Partial" a "Complete" |
+| **Deployment** | ✅ Nueva sección con URLs de Vercel y Render |
+| **Branches** | ✅ Nueva sección explicando `main` vs `docs` |
+
+---
+
+**¿Quieres que ajuste algo más del README?** 🚀
