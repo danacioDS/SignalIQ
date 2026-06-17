@@ -508,60 +508,80 @@ def api_analyze_llm(ticker):
 @app.route('/api/signals-live')
 @limiter.limit("30 per minute")
 def api_signals_live():
-    """Obtiene señales en vivo usando yfinance (sin API key)"""
+    """Obtiene señales en vivo desde la base de datos"""
     tickers_param = request.args.get('tickers', 'NVDA,AAPL,MSFT,TSLA,GOOGL,META,AMD,AMZN,JPM,KO')
     tickers_list = [t.strip().upper() for t in tickers_param.split(',') if t.strip()]
     
     results = []
     errors = []
     
-    for ticker in tickers_list:
-        try:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period='1mo')
-            
-            if hist.empty:
-                errors.append(f"No data found for {ticker}")
-                continue
-            
-            current_price = hist['Close'].iloc[-1]
-            
-            if len(hist) > 1:
-                daily_return = (hist['Close'].iloc[-1] - hist['Close'].iloc[-2]) / hist['Close'].iloc[-2]
-                sentiment = 0.5 + (daily_return * 0.5)
-            else:
-                sentiment = 0.5
-            sentiment = max(0.1, min(0.9, sentiment))
-            
-            if len(hist) >= 20:
-                momentum = (hist['Close'].iloc[-1] / hist['Close'].iloc[-20] - 1) * 100
-            else:
-                momentum = 0
-            
-            ndi = sentiment - (momentum / 100)
-            ndi = max(-2.0, min(2.0, ndi))
-            
-            if ndi > 0.7:
-                regime = "Overheating"
-                color = "red"
-            elif ndi > 0.3:
-                regime = "Watching"
-                color = "yellow"
-            else:
-                regime = "Aligned"
-                color = "green"
-            
-            results.append({
-                'ticker': ticker,
-                'current_price': round(current_price, 2),
-                'ndi': round(ndi, 3),
-                'regime': regime,
-                'color': color,
-                'confidence': round(70 + (abs(ndi) * 15), 1),
-                'source': 'yfinance'
-            })
-        except Exception as e:
-            errors.append(f"Error for {ticker}: {str(e)}")
+    conn = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        
+        for ticker in tickers_list:
+            try:
+                cur.execute("""
+                    SELECT price_date, close 
+                    FROM prices 
+                    WHERE ticker = %s 
+                    ORDER BY price_date DESC 
+                    LIMIT 60
+                """, (ticker,))
+                rows = cur.fetchall()
+                
+                if rows:
+                    # Invertir para orden cronológico
+                    rows.reverse()
+                    closes = [float(row[1]) for row in rows]
+                    current_price = closes[-1]
+                    
+                    # Calcular NDI
+                    if len(closes) > 1:
+                        daily_return = (closes[-1] - closes[-2]) / closes[-2]
+                        sentiment = 0.5 + (daily_return * 0.5)
+                    else:
+                        sentiment = 0.5
+                    sentiment = max(0.1, min(0.9, sentiment))
+                    
+                    if len(closes) >= 20:
+                        momentum = (closes[-1] / closes[-20] - 1) * 100
+                    else:
+                        momentum = 0
+                    
+                    ndi = sentiment - (momentum / 100)
+                    ndi = max(-2.0, min(2.0, ndi))
+                    
+                    if ndi > 0.7:
+                        regime = "Overheating"
+                        color = "red"
+                    elif ndi > 0.3:
+                        regime = "Watching"
+                        color = "yellow"
+                    else:
+                        regime = "Aligned"
+                        color = "green"
+                    
+                    results.append({
+                        'ticker': ticker,
+                        'current_price': round(current_price, 2),
+                        'ndi': round(ndi, 3),
+                        'regime': regime,
+                        'color': color,
+                        'confidence': round(70 + (abs(ndi) * 15), 1),
+                        'source': 'database'
+                    })
+                else:
+                    errors.append(f"No data found for {ticker}")
+            except Exception as e:
+                errors.append(f"Error for {ticker}: {str(e)}")
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            put_connection(conn)
     
     return jsonify({
         'success': True,
@@ -569,7 +589,7 @@ def api_signals_live():
         'signals': results,
         'errors': errors if errors else None,
         'timestamp': datetime.now().isoformat(),
-        'source': 'yfinance'
+        'source': 'database'
     })
 
 # ============================================================
