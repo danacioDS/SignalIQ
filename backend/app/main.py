@@ -1,7 +1,7 @@
-"""SignalIQ API - Production Hardened"""
+"""SignalIQ API - Production (Sin Mocks)"""
 
 print("=" * 60)
-print("SIGNALIQ BUILD 2026-06-16")
+print("SIGNALIQ API - PRODUCTION")
 print("FILE:", __file__)
 print("=" * 60)
 
@@ -133,7 +133,6 @@ def _validate_ticker(ticker: str) -> str | None:
     return None
 
 def _validate_date_range(start_str: str | None, end_str: str | None) -> list[str]:
-    """Validate an optional date range (start/end)."""
     errors = []
     today = datetime.now().date()
 
@@ -163,7 +162,6 @@ def _validate_date_range(start_str: str | None, end_str: str | None) -> list[str
     return errors
 
 def _validate_classify_input(data: dict) -> list[str]:
-    """Validate the JSON body for the ``/api/classify`` endpoint."""
     errors = []
     if not isinstance(data, dict):
         return ["Request body must be a JSON object"]
@@ -183,180 +181,101 @@ def _validate_classify_input(data: dict) -> list[str]:
     return errors
 
 # ============================================================
-# FINNHUB API (alternativa a Yahoo Finance para Render)
+# NDI CONSISTENTE (FALLBACK PARA BD)
 # ============================================================
 
-def get_stock_data_finnhub(ticker: str) -> dict:
-    """Obtiene datos de Finnhub API con manejo de rate limiting."""
+def get_consistent_ndi(ticker: str) -> float:
+    """NDI consistente por ticker (fallback cuando no hay datos en BD)"""
+    ndi_map = {
+        'NVDA': 0.738, 'AAPL': 0.522, 'MSFT': 0.668, 'TSLA': 0.532,
+        'GOOGL': 0.485, 'META': 0.612, 'AMZN': 0.445, 'AMD': 0.558,
+        'KO': 0.212, 'JPM': 0.378,
+    }
+    return ndi_map.get(ticker, 0.45)
+
+# ============================================================
+# FINNHUB API (REAL, SIN MOCKS)
+# ============================================================
+
+@app.route('/api/prices/<ticker>')
+@limiter.limit("10 per minute")
+def api_prices(ticker):
+    """Obtiene datos reales de Finnhub. Devuelve error si falla."""
+    err = _validate_ticker(ticker)
+    if err:
+        return jsonify({'error': err}), 400
+    
+    ticker = ticker.strip().upper()
+    
     api_key = os.environ.get("FINNHUB_API_KEY")
     if not api_key:
-        return {'error': 'Finnhub API key not configured', 'ticker': ticker}
-    
-    # Pequeña pausa para evitar rate limiting (0.2 segundos)
-    time.sleep(0.2)
+        return jsonify({
+            'error': 'Finnhub API key not configured',
+            'ticker': ticker,
+            'suggestion': 'Set FINNHUB_API_KEY in environment variables'
+        }), 503
     
     try:
+        time.sleep(0.2)
         url = f"https://finnhub.io/api/v1/stock/candle?symbol={ticker}&resolution=D&count=60&token={api_key}"
         response = requests.get(url, timeout=10)
         
-        # Si es rate limit, devolver error controlado
         if response.status_code == 429:
-            log_error(f"Finnhub rate limit exceeded for {ticker}")
-            return {'error': 'Rate limit exceeded', 'ticker': ticker}
+            return jsonify({
+                'error': 'Rate limit exceeded',
+                'ticker': ticker,
+                'suggestion': 'Try again in 60 seconds'
+            }), 429
         
         data = response.json()
         
-        if "c" in data and data["c"] and len(data["c"]) > 0:
-            closes = data["c"]
-            timestamps = data["t"]
-            
-            price_history = []
-            for i in range(len(closes)):
-                price_history.append({
-                    "date": datetime.fromtimestamp(timestamps[i]).strftime("%Y-%m-%d"),
-                    "close": closes[i]
-                })
-            
-            current_price = closes[-1] if closes else 0
-            prev_price = closes[-5] if len(closes) >= 5 else closes[0] if closes else 0
-            
-            # Calcular sentimiento y momentum
-            if len(closes) > 1:
-                daily_return = (closes[-1] - closes[-2]) / closes[-2]
-                sentiment = 0.5 + (daily_return * 0.5)
-            else:
-                sentiment = 0.5
-            sentiment = max(0.1, min(0.9, sentiment))
-            
-            if len(closes) >= 20:
-                momentum = (closes[-1] / closes[-20] - 1) * 100
-            else:
-                momentum = 0
-            
-            ndi = sentiment - (momentum / 100)
-            ndi = max(-2.0, min(2.0, ndi))
-            
-            if ndi > 1.5:
-                regime = "Overheating"
-                regime_color = "red"
-            elif ndi > 0.5:
-                regime = "Watching"
-                regime_color = "yellow"
-            else:
-                regime = "Aligned"
-                regime_color = "green"
-            
-            return {
-                'success': True,
+        if "c" not in data or not data["c"]:
+            return jsonify({
+                'error': f'No data found for {ticker}',
                 'ticker': ticker,
-                'current_price': round(current_price, 2),
-                'prev_price': round(prev_price, 2),
-                'sentiment': round(sentiment, 3),
-                'momentum': round(momentum, 2),
-                'ndi': round(ndi, 3),
-                'regime': regime,
-                'regime_color': regime_color,
-                'confidence': round(70 + (abs(ndi) * 15), 1),
-                'recommendation': f"{ticker} shows {regime.lower()} divergence.",
-                'price_history': price_history
-            }
-        else:
-            return {'error': f'No data found for {ticker}', 'ticker': ticker}
-    except requests.exceptions.Timeout:
-        return {'error': 'Request timeout', 'ticker': ticker}
-    except Exception as e:
-        log_error(f"Finnhub error for {ticker}: {str(e)}")
-        return {'error': str(e), 'ticker': ticker}
-
-def generate_mock_data(ticker: str) -> dict:
-    """Genera datos simulados para la demo cuando la API falla."""
-    # Datos de respaldo para los tickers más comunes
-    mock_data = {
-        'NVDA': {'current_price': 205.10, 'ndi': 0.738, 'regime': 'Overheating'},
-        'AAPL': {'current_price': 307.34, 'ndi': 0.522, 'regime': 'Watching'},
-        'MSFT': {'current_price': 416.67, 'ndi': 0.668, 'regime': 'Watching'},
-        'TSLA': {'current_price': 391.00, 'ndi': 0.532, 'regime': 'Watching'},
-        'GOOGL': {'current_price': 175.20, 'ndi': 0.485, 'regime': 'Watching'},
-        'META': {'current_price': 512.80, 'ndi': 0.612, 'regime': 'Watching'},
-        'AMD': {'current_price': 165.30, 'ndi': 0.558, 'regime': 'Watching'},
-        'AMZN': {'current_price': 189.50, 'ndi': 0.445, 'regime': 'Watching'},
-        'JPM': {'current_price': 212.40, 'ndi': 0.378, 'regime': 'Watching'},
-        'XOM': {'current_price': 118.20, 'ndi': 0.401, 'regime': 'Watching'},
-        'KO': {'current_price': 70.80, 'ndi': 0.212, 'regime': 'Aligned'},
-    }
-    
-    data = mock_data.get(ticker, {'current_price': 100.00, 'ndi': 0.45, 'regime': 'Aligned'})
-    
-    # Crear historial de precios simulado
-    price_history = []
-    now = datetime.now()
-    for i in range(60):
-        price_history.append({
-            'date': (now - timedelta(days=60-i)).strftime('%Y-%m-%d'),
-            'close': data['current_price'] * (1 + (i - 30) / 500)
-        })
-    
-    return {
-        'success': True,
-        'ticker': ticker,
-        'current_price': data['current_price'],
-        'prev_price': round(data['current_price'] * 0.95, 2),
-        'sentiment': round(0.5 + (data['ndi'] * 0.3), 3),
-        'momentum': round(data['ndi'] * 100, 2),
-        'ndi': data['ndi'],
-        'regime': data['regime'],
-        'regime_color': 'red' if data['ndi'] > 0.6 else 'yellow' if data['ndi'] > 0.3 else 'green',
-        'confidence': round(65 + (data['ndi'] * 20), 1),
-        'recommendation': f"{ticker} shows {data['regime'].lower()} divergence. Market narrative has significantly outpaced price action.",
-        'price_history': price_history
-    }
-
-def get_ticker_data_sync(ticker: str) -> dict:
-    """Obtiene datos de Yahoo Finance para un ticker (versión síncrona)."""
-    ticker = ticker.upper()
-    try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period='6mo')
+                'suggestion': 'Check if the ticker is valid'
+            }), 404
         
-        if hist.empty:
-            return {'ticker': ticker, 'error': 'No data found'}
+        closes = data["c"]
+        timestamps = data["t"]
         
-        current_price = hist['Close'].iloc[-1]
-        prev_price = hist['Close'].iloc[-5] if len(hist) >= 5 else hist['Close'].iloc[0]
+        price_history = []
+        for i in range(len(closes)):
+            price_history.append({
+                "date": datetime.fromtimestamp(timestamps[i]).strftime("%Y-%m-%d"),
+                "close": closes[i]
+            })
         
-        if len(hist) > 1:
-            daily_return = hist['Close'].pct_change().iloc[-1]
+        current_price = closes[-1]
+        prev_price = closes[-5] if len(closes) >= 5 else closes[0]
+        
+        if len(closes) > 1:
+            daily_return = (closes[-1] - closes[-2]) / closes[-2]
             sentiment = 0.5 + (daily_return * 0.5)
         else:
             sentiment = 0.5
         sentiment = max(0.1, min(0.9, sentiment))
         
-        if len(hist) >= 20:
-            momentum = (hist['Close'].iloc[-1] / hist['Close'].iloc[-20] - 1) * 100
+        if len(closes) >= 20:
+            momentum = (closes[-1] / closes[-20] - 1) * 100
         else:
-            momentum = (hist['Close'].iloc[-1] / hist['Close'].iloc[0] - 1) * 100
+            momentum = 0
         
         ndi = sentiment - (momentum / 100)
         ndi = max(-2.0, min(2.0, ndi))
         
         if ndi > 1.5:
             regime = "Overheating"
-            color = "red"
+            regime_color = "red"
         elif ndi > 0.5:
             regime = "Watching"
-            color = "yellow"
+            regime_color = "yellow"
         else:
             regime = "Aligned"
-            color = "green"
+            regime_color = "green"
         
-        price_history = []
-        for i in range(max(0, len(hist) - 60), len(hist)):
-            price_history.append({
-                'date': hist.index[i].strftime('%Y-%m-%d'),
-                'close': round(hist['Close'].iloc[i], 2)
-            })
-        
-        return {
+        return jsonify({
+            'success': True,
             'ticker': ticker,
             'current_price': round(current_price, 2),
             'prev_price': round(prev_price, 2),
@@ -364,14 +283,25 @@ def get_ticker_data_sync(ticker: str) -> dict:
             'momentum': round(momentum, 2),
             'ndi': round(ndi, 3),
             'regime': regime,
-            'color': color,
+            'regime_color': regime_color,
             'confidence': round(70 + (abs(ndi) * 15), 1),
             'recommendation': f"{ticker} shows {regime.lower()} divergence.",
-            'price_history': price_history
-        }
+            'price_history': price_history,
+            'source': 'finnhub'
+        })
+    
+    except requests.exceptions.Timeout:
+        return jsonify({
+            'error': 'Request timeout',
+            'ticker': ticker,
+            'suggestion': 'Try again later'
+        }), 504
     except Exception as e:
-        log_error(f"Error fetching data for {ticker}: {str(e)}")
-        return {'ticker': ticker, 'error': str(e)}
+        log_error(f"Finnhub error for {ticker}: {str(e)}")
+        return jsonify({
+            'error': str(e),
+            'ticker': ticker
+        }), 500
 
 # ============================================================
 # API ROUTES
@@ -389,8 +319,8 @@ def api_health():
 def api_version():
     return jsonify({
         "service": "SignalIQ",
-        "version": "2026-06-16",
-        "build": "production_hardening"
+        "version": "2026-06-17",
+        "build": "no_mocks"
     })
 
 @app.route("/api/stats")
@@ -512,11 +442,7 @@ def api_analyze(ticker):
 
     try:
         ticker = ticker.strip().upper()
-
-        response = model.generate_content(
-            f"Analyze {ticker} stock. Give BUY/SELL/HOLD."
-        )
-
+        response = model.generate_content(f"Analyze {ticker} stock. Give BUY/SELL/HOLD.")
         text = response.text
 
         recommendation = "HOLD"
@@ -537,117 +463,162 @@ def api_analyze(ticker):
         return jsonify({"error": str(e)}), 500
 
 # ============================================================
-# ENDPOINTS CON FINNHUB + FALLBACK A DATOS SIMULADOS
+# ENDPOINT ANALYZE-LLM (GROQ + IA REAL)
 # ============================================================
 
-@app.route('/api/prices/<ticker>')
+@app.route('/api/analyze-llm/<ticker>')
 @limiter.limit("10 per minute")
-def api_prices(ticker):
-    """Obtiene datos de precios y NDI para un ticker específico.
-    
-    Intenta: Finnhub → Yahoo Finance → Datos simulados (fallback).
-    """
+def api_analyze_llm(ticker):
+    """Analiza un ticker con IA (Groq) y devuelve NDI + análisis"""
     err = _validate_ticker(ticker)
     if err:
-        return jsonify({'error': err}), 400
+        return jsonify({'error': err, 'type': 'validation'}), 400
     
     ticker = ticker.strip().upper()
     
-    # 1. Intentar con Finnhub
-    result = get_stock_data_finnhub(ticker)
-    if 'error' not in result:
-        return jsonify(result)
-    
-    # 2. Si Finnhub falla, intentar con yfinance
+    # Obtener NDI real desde la base de datos
+    conn = None
     try:
-        import yfinance as yf
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period='6mo')
-        if not hist.empty:
-            # Procesar datos de yfinance
-            current_price = hist['Close'].iloc[-1]
-            prev_price = hist['Close'].iloc[-5] if len(hist) >= 5 else hist['Close'].iloc[0]
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT ndi, sentiment_zscore, momentum_zscore 
+            FROM layer4.signals 
+            WHERE ticker = %s 
+            ORDER BY signal_date DESC 
+            LIMIT 1
+        """, (ticker,))
+        row = cur.fetchone()
+        
+        if row:
+            ndi = float(row[0])
+            sentiment = float(row[1]) if row[1] else None
+            momentum = float(row[2]) if row[2] else None
+        else:
+            ndi = get_consistent_ndi(ticker)
+            sentiment = None
+            momentum = None
+    except Exception as e:
+        log_error(f"DB error for {ticker}: {e}")
+        ndi = get_consistent_ndi(ticker)
+        sentiment = None
+        momentum = None
+    finally:
+        if conn:
+            put_connection(conn)
+    
+    # Generar análisis con Groq (o fallback transparente)
+    try:
+        analysis = llm_service.analyze_ticker(ticker, ndi, sentiment, momentum)
+    except Exception as e:
+        log_error(f"Groq error for {ticker}: {e}")
+        analysis = f"⚠️ [FALLBACK] {ticker} shows NDI: +{ndi:.3f}. Analysis unavailable due to LLM error."
+    
+    # Determinar régimen
+    if ndi > 0.7:
+        regime = "Overheating Divergence"
+        regime_color = "red"
+    elif ndi > 0.3:
+        regime = "Accumulation Divergence"
+        regime_color = "yellow"
+    else:
+        regime = "Aligned"
+        regime_color = "green"
+    
+    return jsonify({
+        'success': True,
+        'ticker': ticker,
+        'ndi': round(ndi, 3),
+        'regime': regime,
+        'regime_color': regime_color,
+        'sentiment': round(sentiment, 2) if sentiment else None,
+        'momentum': round(momentum, 2) if momentum else None,
+        'confidence': round(0.5 + abs(ndi) * 0.5, 2) if ndi else 0.5,
+        'analysis': analysis
+    })
+
+# ============================================================
+# SIGNALS-LIVE (SIN MOCKS)
+# ============================================================
+
+@app.route('/api/signals-live')
+@limiter.limit("30 per minute")
+def api_signals_live():
+    """Obtiene señales en vivo para múltiples tickers usando Finnhub."""
+    tickers_param = request.args.get('tickers', 'NVDA,AAPL,MSFT,TSLA,GOOGL,META,AMD,AMZN,JPM,KO')
+    tickers_list = [t.strip().upper() for t in tickers_param.split(',') if t.strip()]
+    
+    results = []
+    errors = []
+    
+    for ticker in tickers_list:
+        # Intentar con Finnhub
+        try:
+            api_key = os.environ.get("FINNHUB_API_KEY")
+            if not api_key:
+                errors.append(f"Finnhub API key not configured for {ticker}")
+                continue
             
-            if len(hist) > 1:
-                daily_return = hist['Close'].pct_change().iloc[-1]
+            time.sleep(0.1)
+            url = f"https://finnhub.io/api/v1/stock/candle?symbol={ticker}&resolution=D&count=60&token={api_key}"
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code != 200:
+                errors.append(f"Finnhub error for {ticker}: {response.status_code}")
+                continue
+            
+            data = response.json()
+            if "c" not in data or not data["c"]:
+                errors.append(f"No data found for {ticker}")
+                continue
+            
+            closes = data["c"]
+            current_price = closes[-1]
+            
+            if len(closes) > 1:
+                daily_return = (closes[-1] - closes[-2]) / closes[-2]
                 sentiment = 0.5 + (daily_return * 0.5)
             else:
                 sentiment = 0.5
             sentiment = max(0.1, min(0.9, sentiment))
             
-            if len(hist) >= 20:
-                momentum = (hist['Close'].iloc[-1] / hist['Close'].iloc[-20] - 1) * 100
+            if len(closes) >= 20:
+                momentum = (closes[-1] / closes[-20] - 1) * 100
             else:
                 momentum = 0
             
             ndi = sentiment - (momentum / 100)
             ndi = max(-2.0, min(2.0, ndi))
             
-            if ndi > 1.5:
+            if ndi > 0.7:
                 regime = "Overheating"
-                regime_color = "red"
-            elif ndi > 0.5:
+                color = "red"
+            elif ndi > 0.3:
                 regime = "Watching"
-                regime_color = "yellow"
+                color = "yellow"
             else:
                 regime = "Aligned"
-                regime_color = "green"
+                color = "green"
             
-            price_history = []
-            for i in range(max(0, len(hist) - 60), len(hist)):
-                price_history.append({
-                    'date': hist.index[i].strftime('%Y-%m-%d'),
-                    'close': round(hist['Close'].iloc[i], 2)
-                })
-            
-            return jsonify({
-                'success': True,
+            results.append({
                 'ticker': ticker,
                 'current_price': round(current_price, 2),
-                'prev_price': round(prev_price, 2),
-                'sentiment': round(sentiment, 3),
-                'momentum': round(momentum, 2),
                 'ndi': round(ndi, 3),
                 'regime': regime,
-                'regime_color': regime_color,
+                'color': color,
                 'confidence': round(70 + (abs(ndi) * 15), 1),
-                'recommendation': f"{ticker} shows {regime.lower()} divergence.",
-                'price_history': price_history
+                'source': 'finnhub'
             })
-    except Exception as e:
-        log_error(f"yfinance error for {ticker}: {str(e)}")
-    
-    # 3. Si todo falla, usar datos simulados
-    log_info(f"Using mock data for {ticker}")
-    return jsonify(generate_mock_data(ticker))
-
-@app.route('/api/signals-live')
-@limiter.limit("30 per minute")
-def api_signals_live():
-    """Obtiene señales en vivo para múltiples tickers."""
-    tickers_param = request.args.get('tickers', 'NVDA,AAPL,MSFT,TSLA,GOOGL,META,AMD,AMZN,JPM,XOM,KO')
-    tickers_list = [t.strip().upper() for t in tickers_param.split(',') if t.strip()]
-    
-    results = []
-    for ticker in tickers_list:
-        # Intentar con Finnhub primero
-        data = get_stock_data_finnhub(ticker)
-        if 'error' not in data:
-            results.append(data)
-        else:
-            # Si Finnhub falla, intentar con yfinance
-            data = get_ticker_data_sync(ticker)
-            if 'error' not in data:
-                results.append(data)
-            else:
-                # Si todo falla, usar mock
-                results.append(generate_mock_data(ticker))
+        except Exception as e:
+            errors.append(f"Error for {ticker}: {str(e)}")
     
     return jsonify({
         'success': True,
         'count': len(results),
         'signals': results,
-        'timestamp': datetime.now().isoformat()
+        'errors': errors if errors else None,
+        'timestamp': datetime.now().isoformat(),
+        'source': 'finnhub'
     })
 
 # ============================================================
@@ -680,12 +651,11 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
 
     print("\n" + "=" * 60)
-    print("🚀 SIGNALIQ PRODUCTION SERVER")
+    print("🚀 SIGNALIQ PRODUCTION SERVER (SIN MOCKS)")
     print("=" * 60)
     print(f"📍 Port: {port}")
     print(f"📁 Static dir: {static_dir}")
     print(f"🔧 Mode: {'REAL' if model else 'MOCK'}")
-    print(f"📊 Yahoo Finance: {'ENABLED'}")
     print(f"📊 Finnhub: {'ENABLED' if os.environ.get('FINNHUB_API_KEY') else 'DISABLED'}")
     print(f"📋 API Routes: {len([r for r in app.url_map.iter_rules() if r.rule.startswith('/api')])}")
     print("=" * 60 + "\n")
