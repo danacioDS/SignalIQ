@@ -194,56 +194,37 @@ def get_consistent_ndi(ticker: str) -> float:
     return ndi_map.get(ticker, 0.45)
 
 # ============================================================
-# FINNHUB API (REAL, SIN MOCKS)
+# PRICES (CON YFINANCE, SIN FINNHUB)
 # ============================================================
 
 @app.route('/api/prices/<ticker>')
 @limiter.limit("10 per minute")
 def api_prices(ticker):
-    """Obtiene datos reales de Finnhub. Devuelve error si falla."""
+    """Obtiene datos de yfinance (sin API key)"""
     err = _validate_ticker(ticker)
     if err:
         return jsonify({'error': err}), 400
     
     ticker = ticker.strip().upper()
     
-    api_key = os.environ.get("FINNHUB_API_KEY")
-    if not api_key:
-        return jsonify({
-            'error': 'Finnhub API key not configured',
-            'ticker': ticker,
-            'suggestion': 'Set FINNHUB_API_KEY in environment variables'
-        }), 503
-    
     try:
-        time.sleep(0.2)
-        url = f"https://finnhub.io/api/v1/stock/candle?symbol={ticker}&resolution=D&count=60&token={api_key}"
-        response = requests.get(url, timeout=10)
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period='6mo')
         
-        if response.status_code == 429:
-            return jsonify({
-                'error': 'Rate limit exceeded',
-                'ticker': ticker,
-                'suggestion': 'Try again in 60 seconds'
-            }), 429
-        
-        data = response.json()
-        
-        if "c" not in data or not data["c"]:
+        if hist.empty:
             return jsonify({
                 'error': f'No data found for {ticker}',
-                'ticker': ticker,
-                'suggestion': 'Check if the ticker is valid'
+                'ticker': ticker
             }), 404
         
-        closes = data["c"]
-        timestamps = data["t"]
+        closes = hist['Close'].values.tolist()
+        dates = [d.strftime('%Y-%m-%d') for d in hist.index]
         
         price_history = []
         for i in range(len(closes)):
             price_history.append({
-                "date": datetime.fromtimestamp(timestamps[i]).strftime("%Y-%m-%d"),
-                "close": closes[i]
+                'date': dates[i],
+                'close': closes[i]
             })
         
         current_price = closes[-1]
@@ -287,17 +268,11 @@ def api_prices(ticker):
             'confidence': round(70 + (abs(ndi) * 15), 1),
             'recommendation': f"{ticker} shows {regime.lower()} divergence.",
             'price_history': price_history,
-            'source': 'finnhub'
+            'source': 'yfinance'
         })
     
-    except requests.exceptions.Timeout:
-        return jsonify({
-            'error': 'Request timeout',
-            'ticker': ticker,
-            'suggestion': 'Try again later'
-        }), 504
     except Exception as e:
-        log_error(f"Finnhub error for {ticker}: {str(e)}")
+        log_error(f"yfinance error for {ticker}: {str(e)}")
         return jsonify({
             'error': str(e),
             'ticker': ticker
@@ -320,7 +295,7 @@ def api_version():
     return jsonify({
         "service": "SignalIQ",
         "version": "2026-06-17",
-        "build": "no_mocks"
+        "build": "yfinance_only"
     })
 
 @app.route("/api/stats")
@@ -451,7 +426,6 @@ def api_analyze_llm(ticker):
     
     ticker = ticker.strip().upper()
     
-    # Obtener NDI real desde la base de datos
     conn = None
     try:
         conn = get_connection()
@@ -482,14 +456,12 @@ def api_analyze_llm(ticker):
         if conn:
             put_connection(conn)
     
-    # Generar análisis con Groq (o fallback transparente)
     try:
         analysis = llm_service.analyze_ticker(ticker, ndi, sentiment, momentum)
     except Exception as e:
         log_error(f"Groq error for {ticker}: {e}")
         analysis = f"⚠️ [FALLBACK] {ticker} shows NDI: +{ndi:.3f}. Analysis unavailable due to LLM error."
     
-    # Determinar régimen
     if ndi > 0.7:
         regime = "Overheating Divergence"
         regime_color = "red"
@@ -513,7 +485,7 @@ def api_analyze_llm(ticker):
     })
 
 # ============================================================
-# SIGNALS-LIVE (SIN MOCKS)
+# SIGNALS-LIVE (CON YFINANCE - SIN API KEY)
 # ============================================================
 
 @app.route('/api/signals-live')
@@ -528,7 +500,6 @@ def api_signals_live():
     
     for ticker in tickers_list:
         try:
-            import yfinance as yf
             stock = yf.Ticker(ticker)
             hist = stock.history(period='1mo')
             
@@ -582,7 +553,18 @@ def api_signals_live():
         'errors': errors if errors else None,
         'timestamp': datetime.now().isoformat(),
         'source': 'yfinance'
-    })@app.route("/")
+    })
+
+# ============================================================
+# FRONTEND
+# ============================================================
+
+static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+
+if not os.path.exists(static_dir):
+    os.makedirs(static_dir, exist_ok=True)
+
+@app.route("/")
 def frontend_root():
     return send_from_directory(static_dir, "index.html")
 
@@ -603,12 +585,12 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
 
     print("\n" + "=" * 60)
-    print("🚀 SIGNALIQ PRODUCTION SERVER (SIN MOCKS)")
+    print("🚀 SIGNALIQ PRODUCTION SERVER")
     print("=" * 60)
     print(f"📍 Port: {port}")
     print(f"📁 Static dir: {static_dir}")
     print(f"🔧 Mode: {'REAL' if model else 'MOCK'}")
-    print(f"📊 Finnhub: {'ENABLED' if os.environ.get('FINNHUB_API_KEY') else 'DISABLED'}")
+    print(f"📊 Fuente principal: yfinance (sin API key)")
     print(f"📋 API Routes: {len([r for r in app.url_map.iter_rules() if r.rule.startswith('/api')])}")
     print("=" * 60 + "\n")
 
