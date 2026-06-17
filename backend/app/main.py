@@ -57,7 +57,7 @@ def log_error(msg, **kwargs):
 
 app = Flask(__name__)
 log_info("SignalIQ main.py loaded", event="startup")
-CORS(app)
+CORS(app, origins=os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(','))
 
 redis_url = os.environ.get('REDIS_URL')
 limiter = Limiter(
@@ -591,6 +591,59 @@ def api_signals_live():
         'timestamp': datetime.now().isoformat(),
         'source': 'database'
     })
+# ============================================================
+# ENDPOINT SIGNALS-INTEL (EVENTS + NARRATIVE)
+# ============================================================
+
+@app.route('/api/signals-intel')
+@limiter.limit("30 per minute")
+def api_signals_intel():
+    """Obtiene EVENTS + NARRATIVE desde intel_signals."""
+    ticker = request.args.get('ticker', '').strip().upper()
+    if not ticker:
+        return jsonify({'error': 'Ticker parameter is required'}), 400
+
+    conn = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT ticker, ndi, events, narrative, created_at
+            FROM intel_signals
+            WHERE ticker = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, (ticker,))
+        row = cur.fetchone()
+
+        if not row:
+            return jsonify({
+                'success': False,
+                'error': f'No intelligence data found for {ticker}'
+            }), 404
+
+        # Parsear JSONB
+        events = row['events'] if row['events'] else []
+        narrative = row['narrative'] if row['narrative'] else []
+
+        # Extraer solo labels de eventos
+        event_labels = [e.get('label', '') for e in events if e.get('label')]
+
+        return jsonify({
+            'success': True,
+            'ticker': row['ticker'],
+            'ndi': float(row['ndi']) if row['ndi'] else None,
+            'events': event_labels,
+            'narrative': narrative,
+            'timestamp': row['created_at'].isoformat() if row['created_at'] else None
+        })
+
+    except Exception as e:
+        log_error(f"Intel error for {ticker}: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            put_connection(conn)
 
 # ============================================================
 # FRONTEND
@@ -631,6 +684,8 @@ if __name__ == "__main__":
     print(f"📋 API Routes: {len([r for r in app.url_map.iter_rules() if r.rule.startswith('/api')])}")
     print("=" * 60 + "\n")
 
+    import atexit
+    atexit.register(close_pool)
     app.run(
         host="0.0.0.0",
         port=port
