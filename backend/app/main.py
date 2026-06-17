@@ -342,30 +342,74 @@ def api_stats():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/signals")
-def api_signals():
-    try:
-        from psycopg2.extras import RealDictCursor
-        rows = execute_query("""
-            SELECT ticker, score, signal, strength, explanation,
-                   price_at_signal, created_at
-            FROM signal_predictions
-            ORDER BY created_at DESC
-            LIMIT 50
-        """, cursor_factory=RealDictCursor)
-
-        for row in rows:
-            if row.get('created_at'):
-                row['created_at'] = row['created_at'].isoformat()
-
-        return jsonify({
-            "success": True,
-            "count": len(rows),
-            "signals": rows
-        })
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+@app.route('/api/signals-live')
+@limiter.limit("30 per minute")
+def api_signals_live():
+    """Obtiene señales en vivo usando yfinance (sin API key)"""
+    tickers_param = request.args.get('tickers', 'NVDA,AAPL,MSFT,TSLA,GOOGL,META,AMD,AMZN,JPM,KO')
+    tickers_list = [t.strip().upper() for t in tickers_param.split(',') if t.strip()]
+    
+    results = []
+    errors = []
+    
+    for ticker in tickers_list:
+        try:
+            import yfinance as yf
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period='1mo')
+            
+            if hist.empty:
+                errors.append(f"No data found for {ticker}")
+                continue
+            
+            current_price = hist['Close'].iloc[-1]
+            
+            # Calcular NDI simple
+            if len(hist) > 1:
+                daily_return = (hist['Close'].iloc[-1] - hist['Close'].iloc[-2]) / hist['Close'].iloc[-2]
+                sentiment = 0.5 + (daily_return * 0.5)
+            else:
+                sentiment = 0.5
+            sentiment = max(0.1, min(0.9, sentiment))
+            
+            if len(hist) >= 20:
+                momentum = (hist['Close'].iloc[-1] / hist['Close'].iloc[-20] - 1) * 100
+            else:
+                momentum = 0
+            
+            ndi = sentiment - (momentum / 100)
+            ndi = max(-2.0, min(2.0, ndi))
+            
+            if ndi > 0.7:
+                regime = "Overheating"
+                color = "red"
+            elif ndi > 0.3:
+                regime = "Watching"
+                color = "yellow"
+            else:
+                regime = "Aligned"
+                color = "green"
+            
+            results.append({
+                'ticker': ticker,
+                'current_price': round(current_price, 2),
+                'ndi': round(ndi, 3),
+                'regime': regime,
+                'color': color,
+                'confidence': round(70 + (abs(ndi) * 15), 1),
+                'source': 'yfinance'
+            })
+        except Exception as e:
+            errors.append(f"Error for {ticker}: {str(e)}")
+    
+    return jsonify({
+        'success': True,
+        'count': len(results),
+        'signals': results,
+        'errors': errors if errors else None,
+        'timestamp': datetime.now().isoformat(),
+        'source': 'yfinance'
+    })
 
 @app.route("/api/score/<ticker>")
 def api_score(ticker):
