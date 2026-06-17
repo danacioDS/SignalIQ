@@ -200,83 +200,100 @@ def get_consistent_ndi(ticker: str) -> float:
 @app.route('/api/prices/<ticker>')
 @limiter.limit("10 per minute")
 def api_prices(ticker):
-    """Obtiene datos de yfinance (sin API key)"""
+    """Obtiene datos de precios desde la base de datos (Layer 2)"""
     err = _validate_ticker(ticker)
     if err:
         return jsonify({'error': err}), 400
     
     ticker = ticker.strip().upper()
     
+    # Intentar obtener datos de la base de datos
+    conn = None
     try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period='6mo')
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT price_date, close 
+            FROM prices 
+            WHERE ticker = %s 
+            ORDER BY price_date DESC 
+            LIMIT 60
+        """, (ticker,))
+        rows = cur.fetchall()
         
-        if hist.empty:
+        if rows:
+            # Invertir para obtener orden cronológico
+            rows.reverse()
+            
+            price_history = []
+            closes = []
+            for row in rows:
+                price_history.append({
+                    'date': row[0].strftime('%Y-%m-%d'),
+                    'close': float(row[1])
+                })
+                closes.append(float(row[1]))
+            
+            current_price = closes[-1]
+            prev_price = closes[-5] if len(closes) >= 5 else closes[0]
+            
+            # Calcular NDI
+            if len(closes) > 1:
+                daily_return = (closes[-1] - closes[-2]) / closes[-2]
+                sentiment = 0.5 + (daily_return * 0.5)
+            else:
+                sentiment = 0.5
+            sentiment = max(0.1, min(0.9, sentiment))
+            
+            if len(closes) >= 20:
+                momentum = (closes[-1] / closes[-20] - 1) * 100
+            else:
+                momentum = 0
+            
+            ndi = sentiment - (momentum / 100)
+            ndi = max(-2.0, min(2.0, ndi))
+            
+            if ndi > 1.5:
+                regime = "Overheating"
+                regime_color = "red"
+            elif ndi > 0.5:
+                regime = "Watching"
+                regime_color = "yellow"
+            else:
+                regime = "Aligned"
+                regime_color = "green"
+            
             return jsonify({
-                'error': f'No data found for {ticker}',
-                'ticker': ticker
-            }), 404
-        
-        closes = hist['Close'].values.tolist()
-        dates = [d.strftime('%Y-%m-%d') for d in hist.index]
-        
-        price_history = []
-        for i in range(len(closes)):
-            price_history.append({
-                'date': dates[i],
-                'close': closes[i]
+                'success': True,
+                'ticker': ticker,
+                'current_price': round(current_price, 2),
+                'prev_price': round(prev_price, 2),
+                'sentiment': round(sentiment, 3),
+                'momentum': round(momentum, 2),
+                'ndi': round(ndi, 3),
+                'regime': regime,
+                'regime_color': regime_color,
+                'confidence': round(70 + (abs(ndi) * 15), 1),
+                'recommendation': f"{ticker} shows {regime.lower()} divergence.",
+                'price_history': price_history,
+                'source': 'database'
             })
-        
-        current_price = closes[-1]
-        prev_price = closes[-5] if len(closes) >= 5 else closes[0]
-        
-        if len(closes) > 1:
-            daily_return = (closes[-1] - closes[-2]) / closes[-2]
-            sentiment = 0.5 + (daily_return * 0.5)
         else:
-            sentiment = 0.5
-        sentiment = max(0.1, min(0.9, sentiment))
-        
-        if len(closes) >= 20:
-            momentum = (closes[-1] / closes[-20] - 1) * 100
-        else:
-            momentum = 0
-        
-        ndi = sentiment - (momentum / 100)
-        ndi = max(-2.0, min(2.0, ndi))
-        
-        if ndi > 1.5:
-            regime = "Overheating"
-            regime_color = "red"
-        elif ndi > 0.5:
-            regime = "Watching"
-            regime_color = "yellow"
-        else:
-            regime = "Aligned"
-            regime_color = "green"
-        
-        return jsonify({
-            'success': True,
-            'ticker': ticker,
-            'current_price': round(current_price, 2),
-            'prev_price': round(prev_price, 2),
-            'sentiment': round(sentiment, 3),
-            'momentum': round(momentum, 2),
-            'ndi': round(ndi, 3),
-            'regime': regime,
-            'regime_color': regime_color,
-            'confidence': round(70 + (abs(ndi) * 15), 1),
-            'recommendation': f"{ticker} shows {regime.lower()} divergence.",
-            'price_history': price_history,
-            'source': 'yfinance'
-        })
-    
+            return jsonify({
+                'error': f'No data found for {ticker} in database',
+                'ticker': ticker,
+                'suggestion': 'Run ingestion to load data'
+            }), 404
+            
     except Exception as e:
-        log_error(f"yfinance error for {ticker}: {str(e)}")
+        log_error(f"Database error for {ticker}: {str(e)}")
         return jsonify({
             'error': str(e),
             'ticker': ticker
         }), 500
+    finally:
+        if conn:
+            put_connection(conn)
 
 # ============================================================
 # API ROUTES
