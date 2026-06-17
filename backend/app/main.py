@@ -519,7 +519,7 @@ def api_analyze_llm(ticker):
 @app.route('/api/signals-live')
 @limiter.limit("30 per minute")
 def api_signals_live():
-    """Obtiene señales en vivo para múltiples tickers usando Finnhub."""
+    """Obtiene señales en vivo usando yfinance (sin API key)"""
     tickers_param = request.args.get('tickers', 'NVDA,AAPL,MSFT,TSLA,GOOGL,META,AMD,AMZN,JPM,KO')
     tickers_list = [t.strip().upper() for t in tickers_param.split(',') if t.strip()]
     
@@ -527,38 +527,26 @@ def api_signals_live():
     errors = []
     
     for ticker in tickers_list:
-        # Intentar con Finnhub
         try:
-            api_key = os.environ.get("FINNHUB_API_KEY")
-            if not api_key:
-                errors.append(f"Finnhub API key not configured for {ticker}")
-                continue
+            import yfinance as yf
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period='1mo')
             
-            time.sleep(0.1)
-            url = f"https://finnhub.io/api/v1/stock/candle?symbol={ticker}&resolution=D&count=60&token={api_key}"
-            response = requests.get(url, timeout=10)
-            
-            if response.status_code != 200:
-                errors.append(f"Finnhub error for {ticker}: {response.status_code}")
-                continue
-            
-            data = response.json()
-            if "c" not in data or not data["c"]:
+            if hist.empty:
                 errors.append(f"No data found for {ticker}")
                 continue
             
-            closes = data["c"]
-            current_price = closes[-1]
+            current_price = hist['Close'].iloc[-1]
             
-            if len(closes) > 1:
-                daily_return = (closes[-1] - closes[-2]) / closes[-2]
+            if len(hist) > 1:
+                daily_return = (hist['Close'].iloc[-1] - hist['Close'].iloc[-2]) / hist['Close'].iloc[-2]
                 sentiment = 0.5 + (daily_return * 0.5)
             else:
                 sentiment = 0.5
             sentiment = max(0.1, min(0.9, sentiment))
             
-            if len(closes) >= 20:
-                momentum = (closes[-1] / closes[-20] - 1) * 100
+            if len(hist) >= 20:
+                momentum = (hist['Close'].iloc[-1] / hist['Close'].iloc[-20] - 1) * 100
             else:
                 momentum = 0
             
@@ -582,7 +570,7 @@ def api_signals_live():
                 'regime': regime,
                 'color': color,
                 'confidence': round(70 + (abs(ndi) * 15), 1),
-                'source': 'finnhub'
+                'source': 'yfinance'
             })
         except Exception as e:
             errors.append(f"Error for {ticker}: {str(e)}")
@@ -593,19 +581,8 @@ def api_signals_live():
         'signals': results,
         'errors': errors if errors else None,
         'timestamp': datetime.now().isoformat(),
-        'source': 'finnhub'
-    })
-
-# ============================================================
-# FRONTEND
-# ============================================================
-
-static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
-
-if not os.path.exists(static_dir):
-    os.makedirs(static_dir, exist_ok=True)
-
-@app.route("/")
+        'source': 'yfinance'
+    })@app.route("/")
 def frontend_root():
     return send_from_directory(static_dir, "index.html")
 
