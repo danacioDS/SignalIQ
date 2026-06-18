@@ -1,83 +1,75 @@
 import React from 'react';
-import { C } from './components/styles';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
-import Intelligence from './pages/Intelligence';
-import Data from './pages/Data';
-import About from './pages/About';
-import EconomicFoundation from './components/EconomicFoundation';
-import Methodology from './components/Methodology';
+import EconomicFoundation from './pages/EconomicFoundation';
+import Data from './components/Data';
 import TechStack from './components/TechStack';
-import Architecture from './components/Architecture';
-import './App.css';
+import About from './components/About';
+import { C } from './components/styles';
 
 function App() {
-  const [active, setActive] = React.useState('dashboard');
+  return (
+    <Router>
+      <div style={{ minHeight: '100vh', background: C.bg, color: C.text }}>
+        <Navigation />
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/foundation" element={<EconomicFoundation />} />
+          <Route path="/data" element={<Data />} />
+          <Route path="/techstack" element={<TechStack />} />
+          <Route path="/about" element={<About />} />
+        </Routes>
+      </div>
+    </Router>
+  );
+}
 
+function Navigation() {
+  const location = useLocation();
+  
   const navItems = [
-    { id: 'dashboard', label: '📊 Dashboard' },
-    { id: 'intelligence', label: '🧠 Intelligence' },
-    { id: 'data', label: '📡 Data' },
-    { id: 'foundation', label: '📚 Economic Foundation' },
-    { id: 'methodology', label: '📈 Methodology' },
-    { id: 'techstack', label: '⚙️ Tech Stack' },
-    { id: 'architecture', label: '🏗️ Architecture' },
-    { id: 'about', label: '📖 About' },
+    { path: '/', label: '📊 Dashboard' },
+    { path: '/foundation', label: '📚 Economic Foundation' },
+    { path: '/data', label: '📡 Data' },
+    { path: '/techstack', label: '⚙️ Tech Stack' },
+    { path: '/about', label: '📖 About' },
   ];
 
-  const components: Record<string, React.ComponentType> = {
-    dashboard: Dashboard,
-    intelligence: Intelligence,
-    data: Data,
-    foundation: EconomicFoundation,
-    methodology: Methodology,
-    techstack: TechStack,
-    architecture: Architecture,
-    about: About,
-  };
-
-  const ActiveComponent = components[active] || Dashboard;
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: C.bg, color: C.text }}>
-      <nav style={{
-        background: C.card,
-        borderBottom: `1px solid ${C.cardBorder}`,
-        padding: '12px 24px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        flexWrap: 'wrap',
-      }}>
-        <span style={{ fontWeight: 700, fontSize: 18, color: C.accent, marginRight: 8 }}>◈ SignalIQ</span>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActive(item.id)}
-              style={{
-                color: active === item.id ? C.text : C.muted,
-                background: active === item.id ? C.accentBg : 'transparent',
-                border: 'none',
-                fontSize: 13,
-                padding: '5px 10px',
-                borderRadius: 4,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                whiteSpace: 'nowrap',
-              }}
-              onMouseEnter={(e) => { if (active !== item.id) e.currentTarget.style.color = C.text; }}
-              onMouseLeave={(e) => { if (active !== item.id) e.currentTarget.style.color = C.muted; }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </nav>
-
-      <div style={{ flex: 1, padding: '16px' }}>
-        <ActiveComponent />
+    <nav style={{
+      display: 'flex',
+      gap: 8,
+      padding: '12px 24px',
+      background: C.card,
+      borderBottom: `1px solid ${C.cardBorder}`,
+      alignItems: 'center',
+      flexWrap: 'wrap',
+    }}>
+      <div style={{ fontWeight: 700, fontSize: 18, color: C.accent, marginRight: 16 }}>
+        ◈ SignalIQ
       </div>
-    </div>
+      {navItems.map((item) => {
+        const isActive = location.pathname === item.path;
+        return (
+          <Link
+            key={item.path}
+            to={item.path}
+            style={{
+              color: isActive ? C.accent : C.muted,
+              textDecoration: 'none',
+              fontSize: 13,
+              fontWeight: isActive ? 600 : 400,
+              padding: '4px 10px',
+              borderRadius: 6,
+              background: isActive ? 'rgba(108,99,255,0.1)' : 'transparent',
+              transition: 'all 0.2s',
+            }}
+          >
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 

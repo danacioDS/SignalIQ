@@ -253,3 +253,11 @@ This software was designed and built by Daniel Canedo as part of the SignalIQ pr
 ```
 
 ---
+cd ~/repo_lab/SignalIQ/frontend
+
+# Reconstruir
+rm -rf build node_modules/.cache
+npm run build
+
+# Desplegar
+vercel --prod --force
