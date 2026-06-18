@@ -9,14 +9,6 @@ interface TickerAnalysisProps {
   onBack: () => void;
 }
 
-// ── Iconos de régimen ────────────────────────────────────────────────────────
-const regimeIcon: Record<string, string> = {
-  'Overheating': '🔴',
-  'Watching': '🟡',
-  'Aligned': '🟢',
-  'Undervalued': '🔵',
-};
-
 export default function TickerAnalysis({ ticker, onBack }: TickerAnalysisProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

@@ -43,10 +43,10 @@ export const getRegimeInfo = (ndi: number): RegimeInfo => {
     };
   } else if (ndi > -1.5) {
     return {
-      label: 'Aligned',
-      icon: '🟢',
-      color: C.green,
-      bgColor: C.greenBg,
+      label: 'Strong Undervalued',
+      icon: '🔵',
+      color: C.blue,
+      bgColor: C.blueBg,
       range: '-1.5 < NDI ≤ -0.5',
     };
   } else if (ndi > -2.0) {
@@ -68,18 +68,26 @@ export const getRegimeInfo = (ndi: number): RegimeInfo => {
   }
 };
 
-export const getRegimeColor = (ndi: number): string => {
-  return getRegimeInfo(ndi).color;
+// ============================================
+// FUNCIONES EXPORTADAS PARA Dashboard.tsx
+// ============================================
+
+export const getRegimeFromNdi = (ndi: number): string => {
+  return getRegimeInfo(ndi).label;
 };
 
-export const getRegimeBg = (ndi: number): string => {
-  return getRegimeInfo(ndi).bgColor;
+export const getRegimeLabel = (ndi: number): string => {
+  return getRegimeInfo(ndi).label;
 };
 
 export const getRegimeIcon = (ndi: number): string => {
   return getRegimeInfo(ndi).icon;
 };
 
-export const getRegimeLabel = (ndi: number): string => {
-  return getRegimeInfo(ndi).label;
+export const getRegimeColor = (ndi: number): string => {
+  return getRegimeInfo(ndi).color;
+};
+
+export const getRegimeBg = (ndi: number): string => {
+  return getRegimeInfo(ndi).bgColor;
 };
