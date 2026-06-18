@@ -61,11 +61,10 @@ def log_error(msg, **kwargs):
 
 app = Flask(__name__)
 log_info("SignalIQ main.py loaded", event="startup")
-CORS(app, origins=[
-    'http://localhost:3000',
-    'https://signaliq-frontend-ashen.vercel.app',
-    'https://signaliq-frontend-ppct6f6if-daniel-canedo-s-projects.vercel.app'
-])
+
+# Configurar CORS desde variable de entorno
+CORS(app, origins=os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(","))
+
 
 redis_url = os.environ.get('REDIS_URL')
 limiter = Limiter(
