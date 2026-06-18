@@ -1,6 +1,7 @@
-import { C } from "./styles";
+import React from 'react';
+import { C } from '../components/styles';
 
-export default function DataRecovery() {
+export default function Data() {
   return (
     <div style={{ padding: "24px 32px", maxWidth: 1200 }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>📡 Data Acquisition Strategy</h1>
@@ -64,7 +65,6 @@ export default function DataRecovery() {
           </div>
         </div>
 
-        {/* Media Diversification */}
         <div style={{ background: C.bg, borderRadius: 8, padding: "16px" }}>
           <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: C.text }}>🔄 Media Diversification Framework</h3>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, fontSize: 12 }}>

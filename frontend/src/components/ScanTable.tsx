@@ -1,23 +1,6 @@
 import React, { useState } from 'react';
 import ExpandedRow from './ExpandedRow';
-
-const C = {
-  bg: '#0e1117',
-  card: '#181f2e',
-  cardBorder: 'rgba(255,255,255,0.06)',
-  accent: '#6c63ff',
-  green: '#10b981',
-  yellow: '#f59e0b',
-  red: '#ef4444',
-  blue: '#3b82f6',
-  text: '#e2e8f0',
-  muted: '#6b7280',
-  dim: '#374151',
-  greenBg: 'rgba(16,185,129,0.15)',
-  redBg: 'rgba(239,68,68,0.15)',
-  yellowBg: 'rgba(245,158,11,0.15)',
-  blueBg: 'rgba(59,130,246,0.15)',
-};
+import { C } from './styles';
 
 interface Signal {
   ticker: string;
@@ -25,10 +8,6 @@ interface Signal {
   regime: string;
   confidence: number;
   price: number;
-  events?: string[];
-  narrative?: string[];
-  sentiment?: number;
-  momentum?: number;
 }
 
 interface ScanTableProps {
@@ -52,103 +31,91 @@ const ScanTable: React.FC<ScanTableProps> = ({ signals }) => {
     return colors[regime] || C.muted;
   };
 
+  const getRegimeIcon = (regime: string) => {
+    const icons: Record<string, string> = {
+      'Overheating': '🔴',
+      'Watching': '🟡',
+      'Fear': '📉',
+      'Aligned': '🟢',
+    };
+    return icons[regime] || '🟡';
+  };
+
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{
-            color: C.muted,
-            fontSize: 11,
-            borderBottom: `1px solid ${C.cardBorder}`,
-            textTransform: 'uppercase',
-            letterSpacing: '0.3px',
-          }}>
-            <th style={{ padding: '8px 12px', textAlign: 'left' }}>Ticker</th>
-            <th style={{ padding: '8px 12px', textAlign: 'left' }}>NDI</th>
-            <th style={{ padding: '8px 12px', textAlign: 'left' }}>Regime</th>
-            <th style={{ padding: '8px 12px', textAlign: 'left' }}>Conf</th>
-            <th style={{ padding: '8px 12px', textAlign: 'left' }}>Price</th>
-            <th style={{ padding: '8px 12px', textAlign: 'right' }}>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {signals.map((s) => (
-            <React.Fragment key={s.ticker}>
-              <tr
+    <div>
+      {/* Grid de tarjetas */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
+        gap: '14px',
+        marginBottom: '16px'
+      }}>
+        {signals.map((s) => {
+          const isExpanded = expandedRow === s.ticker;
+          return (
+            <div key={s.ticker}>
+              <div 
                 style={{
-                  borderBottom: expandedRow === s.ticker ? 'none' : `1px solid ${C.cardBorder}`,
+                  background: C.card,
+                  border: `1px solid ${isExpanded ? C.accent : C.cardBorder}`,
+                  borderRadius: 12,
+                  padding: '16px 18px',
                   cursor: 'pointer',
-                  transition: 'background 0.15s',
+                  transition: 'all 0.2s',
+                  position: 'relative',
+                  overflow: 'hidden',
                 }}
                 onClick={() => toggleExpand(s.ticker)}
-                onMouseEnter={(e) => e.currentTarget.style.background = C.card}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
+                onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.borderColor = C.cardBorder; }}
               >
-                <td style={{ padding: '10px 12px', fontWeight: 600, fontSize: 13 }}>
-                  {s.ticker}
-                </td>
-                <td style={{
-                  padding: '10px 12px',
-                  fontWeight: 600,
-                  color: getRegimeColor(s.regime),
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 18, fontWeight: 700 }}>{s.ticker}</span>
+                  <span style={{ fontSize: 11, color: C.muted }}>{s.regime}</span>
+                </div>
+                <div style={{ 
+                  fontSize: 28, 
+                  fontWeight: 700, 
+                  margin: '4px 0', 
+                  color: getRegimeColor(s.regime) 
                 }}>
                   {s.ndi > 0 ? `+${s.ndi.toFixed(3)}` : s.ndi.toFixed(3)}
-                </td>
-                <td style={{ padding: '10px 12px' }}>
-                  <span style={{
-                    padding: '2px 10px',
-                    borderRadius: 20,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    background: getRegimeColor(s.regime) + '20',
-                    color: getRegimeColor(s.regime),
-                  }}>
-                    {s.regime}
-                  </span>
-                </td>
-                <td style={{ padding: '10px 12px' }}>
-                  {Math.round(s.confidence * 100)}%
-                </td>
-                <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>
+                </div>
+                <div style={{ 
+                  display: 'inline-block',
+                  fontSize: 11, 
+                  background: getRegimeColor(s.regime) + '20', 
+                  color: getRegimeColor(s.regime), 
+                  padding: '2px 10px', 
+                  borderRadius: 20,
+                  fontWeight: 600,
+                }}>
+                  {getRegimeIcon(s.regime)} {s.regime}
+                </div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
                   ${s.price.toFixed(2)}
-                </td>
-                <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleExpand(s.ticker); }}
-                    style={{
-                      background: 'transparent',
-                      border: `1px solid ${C.accent}`,
-                      color: C.accent,
-                      borderRadius: 4,
-                      padding: '3px 10px',
-                      fontSize: 11,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = C.accent;
-                      e.currentTarget.style.color = 'white';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.color = C.accent;
-                    }}
-                  >
-                    {expandedRow === s.ticker ? 'Close' : 'Expand'}
-                  </button>
-                </td>
-              </tr>
-              {expandedRow === s.ticker && (
-                <tr>
-                  <td colSpan={6} style={{ padding: 0 }}>
-                    <ExpandedRow ticker={s.ticker} baseSignal={s} />
-                  </td>
-                </tr>
+                </div>
+                <div style={{ 
+                  position: 'absolute', 
+                  bottom: 0, 
+                  left: 0, 
+                  right: 0, 
+                  height: 2, 
+                  background: getRegimeColor(s.regime),
+                  opacity: 0.3,
+                }} />
+              </div>
+              
+              {/* ExpandedRow - se muestra debajo de la card */}
+              {isExpanded && (
+                <div style={{ marginTop: '8px' }}>
+                  <ExpandedRow ticker={s.ticker} baseSignal={s} />
+                </div>
               )}
-            </React.Fragment>
-          ))}
-        </tbody>
-      </table>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };

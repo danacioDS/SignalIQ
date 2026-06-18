@@ -1,4 +1,5 @@
-import { C } from "./styles";
+import React from 'react';
+import { C } from './styles';
 
 export default function Methodology() {
   return (
@@ -27,8 +28,6 @@ export default function Methodology() {
 
       <div style={{ background: C.card, borderRadius: 12, padding: "20px", marginBottom: 24, border: `1px solid ${C.accent}` }}>
         <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: C.accent }}>📊 NDI Decision Framework</h3>
-        <p style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Statistically informed thresholds based on historical correction probability.</p>
-        
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
@@ -59,16 +58,6 @@ export default function Methodology() {
             </tbody>
           </table>
         </div>
-        <p style={{ fontSize: 10, color: C.dim, marginTop: 12 }}>* Correction Rate: Probability of 10-day drawdown ≥ 3%. Based on historical validation for NVDA (2024-2026).</p>
-      </div>
-
-      <div style={{ background: C.sidebar, borderRadius: 8, padding: "16px" }}>
-        <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>NDI Interpretation</h3>
-        <ul style={{ fontSize: 12, color: C.muted, marginLeft: 20, lineHeight: 1.8 }}>
-          <li>📊 NDI ≈ 0 → Narrative-price alignment</li>
-          <li>🔴 NDI &gt; 1.5 → Significant divergence (narrative far ahead of price)</li>
-          <li>🔵 NDI &lt; -1.5 → Inverse divergence (price rising without narrative support)</li>
-        </ul>
       </div>
     </div>
   );
