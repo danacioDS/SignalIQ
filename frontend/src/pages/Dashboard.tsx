@@ -1,6 +1,6 @@
 /**
  * Dashboard.tsx
- * Layout final del Instrument Cluster - Versión Responsive
+ * Layout final del Instrument Cluster - Versión Centrada
  */
 
 import { useState, useEffect } from 'react';
@@ -188,17 +188,28 @@ export default function Dashboard() {
   const displayMomentum = signalInput.momentum;
   const displayPrice = signalInput.price;
 
+  // Detectar si es móvil
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 600;
+
   return (
     <div style={{ 
-      padding: '12px 12px', 
-      maxWidth: 1200, 
+      padding: isMobile ? '10px 10px' : '20px 32px', 
+      maxWidth: 900, 
       margin: '0 auto',
       width: '100%',
       boxSizing: 'border-box',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
     }}>
-      <div style={{ marginBottom: 8 }}>
+      {/* Header centrado */}
+      <div style={{ 
+        marginBottom: 8, 
+        textAlign: 'center',
+        width: '100%',
+      }}>
         <h1 style={{ 
-          fontSize: window.innerWidth < 600 ? 18 : 22, 
+          fontSize: isMobile ? 18 : 22, 
           fontWeight: 700, 
           margin: 0, 
           color: C.text 
@@ -206,7 +217,7 @@ export default function Dashboard() {
           📊 SignalIQ
         </h1>
         <p style={{ 
-          fontSize: window.innerWidth < 600 ? 10 : 12, 
+          fontSize: isMobile ? 10 : 12, 
           color: C.muted, 
           margin: '2px 0 0' 
         }}>
@@ -214,26 +225,28 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* Price Evolution - responsive height */}
+      {/* Price Evolution */}
       <div
         style={{
           background: C.card,
           border: `1px solid ${C.cardBorder}`,
           borderRadius: 12,
-          padding: window.innerWidth < 600 ? 12 : 20,
+          padding: isMobile ? 10 : 16,
           marginBottom: 12,
+          width: '100%',
+          maxWidth: 800,
         }}
       >
         <h3 style={{ 
-          fontSize: window.innerWidth < 600 ? 12 : 14, 
+          fontSize: isMobile ? 11 : 13, 
           fontWeight: 600, 
-          margin: '0 0 12px 0', 
+          margin: '0 0 8px 0', 
           color: C.text 
         }}>
           📈 Price Evolution {selectedTicker ? `(${selectedTicker})` : ''}
         </h3>
         {priceHistory.length > 0 ? (
-          <ResponsiveContainer width="100%" height={window.innerWidth < 600 ? 140 : 200}>
+          <ResponsiveContainer width="100%" height={isMobile ? 120 : 180}>
             <AreaChart data={priceHistory}>
               <defs>
                 <linearGradient id="gPrice" x1="0" y1="0" x2="0" y2="1">
@@ -244,12 +257,12 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
               <XAxis 
                 dataKey="date" 
-                tick={{ fill: C.muted, fontSize: window.innerWidth < 600 ? 8 : 10 }} 
+                tick={{ fill: C.muted, fontSize: isMobile ? 7 : 9 }} 
                 axisLine={false} 
                 tickLine={false} 
               />
               <YAxis 
-                tick={{ fill: C.muted, fontSize: window.innerWidth < 600 ? 8 : 10 }} 
+                tick={{ fill: C.muted, fontSize: isMobile ? 7 : 9 }} 
                 axisLine={false} 
                 tickLine={false} 
                 domain={['auto', 'auto']} 
@@ -259,50 +272,56 @@ export default function Dashboard() {
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <div style={{ textAlign: 'center', padding: '20px 0', color: C.muted }}>
+          <div style={{ textAlign: 'center', padding: '12px 0', color: C.muted }}>
             No price data available
           </div>
         )}
       </div>
 
-      {/* Ticker Selector */}
-      <TickerFocusStrip
-        tickers={tickerList}
-        selectedTicker={selectedTicker}
-        onSelect={setSelectedTicker}
-        ndiMap={ndiMap}
-      />
+      {/* Ticker Selector - centrado */}
+      <div style={{ width: '100%', maxWidth: 800 }}>
+        <TickerFocusStrip
+          tickers={tickerList}
+          selectedTicker={selectedTicker}
+          onSelect={setSelectedTicker}
+          ndiMap={ndiMap}
+        />
+      </div>
 
       {error && (
-        <div style={{ background: C.redBg, borderRadius: 8, padding: 10, marginTop: 10 }}>
-          <p style={{ fontSize: 12, color: C.red, margin: 0 }}>{error}</p>
+        <div style={{ background: C.redBg, borderRadius: 8, padding: 8, marginTop: 8, width: '100%', maxWidth: 800 }}>
+          <p style={{ fontSize: 11, color: C.red, margin: 0 }}>{error}</p>
         </div>
       )}
 
-      {/* Velocímetro - centrado y responsive */}
+      {/* Velocímetro - centrado con contenedor */}
       <div style={{ 
-        marginTop: 8, 
+        marginTop: 10,
+        marginBottom: 6,
         display: 'flex', 
         justifyContent: 'center',
+        alignItems: 'center',
         width: '100%',
-        overflow: 'hidden',
+        maxWidth: 800,
       }}>
         <NDIVelocimeter 
           ndi={analysis.ndi} 
-          size={window.innerWidth < 600 ? 300 : 400} 
+          size={isMobile ? 280 : 380} 
         />
       </div>
 
       {/* Narrative Panel */}
-      <NarrativePanel
-        ticker={displayTicker}
-        ndi={analysis.ndi}
-        regime={analysis.regime}
-        sentiment={displaySentiment}
-        momentum={displayMomentum}
-        price={displayPrice}
-        explanation={analysis.explanation}
-      />
+      <div style={{ width: '100%', maxWidth: 800 }}>
+        <NarrativePanel
+          ticker={displayTicker}
+          ndi={analysis.ndi}
+          regime={analysis.regime}
+          sentiment={displaySentiment}
+          momentum={displayMomentum}
+          price={displayPrice}
+          explanation={analysis.explanation}
+        />
+      </div>
 
       {/* Sector Performance */}
       <div
@@ -310,14 +329,16 @@ export default function Dashboard() {
           background: C.card,
           border: `1px solid ${C.cardBorder}`,
           borderRadius: 12,
-          padding: window.innerWidth < 600 ? 14 : 20,
-          marginTop: 14,
+          padding: isMobile ? 12 : 16,
+          marginTop: 12,
+          width: '100%',
+          maxWidth: 800,
         }}
       >
         <h3 style={{ 
-          fontSize: window.innerWidth < 600 ? 12 : 14, 
+          fontSize: isMobile ? 11 : 13, 
           fontWeight: 600, 
-          margin: '0 0 12px 0', 
+          margin: '0 0 10px 0', 
           color: C.text 
         }}>
           📊 Sector Performance (Avg NDI)
@@ -328,13 +349,13 @@ export default function Dashboard() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: window.innerWidth < 600 ? 8 : 12,
-              marginBottom: window.innerWidth < 600 ? 4 : 6,
+              gap: isMobile ? 6 : 10,
+              marginBottom: isMobile ? 3 : 5,
             }}
           >
             <span style={{ 
-              width: window.innerWidth < 600 ? 70 : 100, 
-              fontSize: window.innerWidth < 600 ? 10 : 12, 
+              width: isMobile ? 65 : 90, 
+              fontSize: isMobile ? 9 : 11, 
               color: C.muted 
             }}>
               {s.sector}
@@ -342,7 +363,7 @@ export default function Dashboard() {
             <div
               style={{
                 flex: 1,
-                height: window.innerWidth < 600 ? 4 : 6,
+                height: isMobile ? 4 : 6,
                 background: C.bg,
                 borderRadius: 4,
                 overflow: 'hidden',
@@ -359,8 +380,8 @@ export default function Dashboard() {
               />
             </div>
             <span style={{ 
-              width: 35, 
-              fontSize: window.innerWidth < 600 ? 10 : 12, 
+              width: 30, 
+              fontSize: isMobile ? 9 : 11, 
               color: C.text, 
               textAlign: 'right' 
             }}>
