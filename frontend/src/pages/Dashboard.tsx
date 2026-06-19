@@ -1,6 +1,6 @@
 /**
  * Dashboard.tsx
- * Layout final del Instrument Cluster
+ * Layout final del Instrument Cluster - Versión Responsive
  */
 
 import { useState, useEffect } from 'react';
@@ -76,10 +76,6 @@ export default function Dashboard() {
         if (data.success && data.signals && data.signals.length > 0) {
           const formatted = data.signals.map((item: any) => {
             const ndi = item.ndi || 0;
-            // Calcular sentiment y momentum a partir del NDI
-            // NDI = sentiment - momentum
-            // Asumimos que sentiment y momentum son proporcionales al NDI
-            // con un factor de escala para que los valores sean realistas
             const sentiment = ndi * 0.6 + 0.2;
             const momentum = ndi * 0.4;
             
@@ -193,31 +189,51 @@ export default function Dashboard() {
   const displayPrice = signalInput.price;
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ 
+      padding: '12px 12px', 
+      maxWidth: 1200, 
+      margin: '0 auto',
+      width: '100%',
+      boxSizing: 'border-box',
+    }}>
       <div style={{ marginBottom: 8 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: C.text }}>
+        <h1 style={{ 
+          fontSize: window.innerWidth < 600 ? 18 : 22, 
+          fontWeight: 700, 
+          margin: 0, 
+          color: C.text 
+        }}>
           📊 SignalIQ
         </h1>
-        <p style={{ fontSize: 12, color: C.muted, margin: '4px 0 0' }}>
+        <p style={{ 
+          fontSize: window.innerWidth < 600 ? 10 : 12, 
+          color: C.muted, 
+          margin: '2px 0 0' 
+        }}>
           NDI = Sentiment − Momentum • {signals.length} tickers live
         </p>
       </div>
 
-      {/* Price Evolution */}
+      {/* Price Evolution - responsive height */}
       <div
         style={{
           background: C.card,
           border: `1px solid ${C.cardBorder}`,
           borderRadius: 12,
-          padding: 20,
-          marginBottom: 16,
+          padding: window.innerWidth < 600 ? 12 : 20,
+          marginBottom: 12,
         }}
       >
-        <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 16px 0', color: C.text }}>
+        <h3 style={{ 
+          fontSize: window.innerWidth < 600 ? 12 : 14, 
+          fontWeight: 600, 
+          margin: '0 0 12px 0', 
+          color: C.text 
+        }}>
           📈 Price Evolution {selectedTicker ? `(${selectedTicker})` : ''}
         </h3>
         {priceHistory.length > 0 ? (
-          <ResponsiveContainer width="100%" height={200}>
+          <ResponsiveContainer width="100%" height={window.innerWidth < 600 ? 140 : 200}>
             <AreaChart data={priceHistory}>
               <defs>
                 <linearGradient id="gPrice" x1="0" y1="0" x2="0" y2="1">
@@ -226,8 +242,18 @@ export default function Dashboard() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-              <XAxis dataKey="date" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} domain={['auto', 'auto']} />
+              <XAxis 
+                dataKey="date" 
+                tick={{ fill: C.muted, fontSize: window.innerWidth < 600 ? 8 : 10 }} 
+                axisLine={false} 
+                tickLine={false} 
+              />
+              <YAxis 
+                tick={{ fill: C.muted, fontSize: window.innerWidth < 600 ? 8 : 10 }} 
+                axisLine={false} 
+                tickLine={false} 
+                domain={['auto', 'auto']} 
+              />
               <Tooltip contentStyle={{ background: C.sidebar, border: `1px solid ${C.cardBorder}`, borderRadius: 8 }} />
               <Area type="monotone" dataKey="close" name="Price" stroke={C.accent} strokeWidth={2} fill="url(#gPrice)" />
             </AreaChart>
@@ -248,14 +274,23 @@ export default function Dashboard() {
       />
 
       {error && (
-        <div style={{ background: C.redBg, borderRadius: 8, padding: 12, marginTop: 12 }}>
+        <div style={{ background: C.redBg, borderRadius: 8, padding: 10, marginTop: 10 }}>
           <p style={{ fontSize: 12, color: C.red, margin: 0 }}>{error}</p>
         </div>
       )}
 
-      {/* Velocímetro */}
-      <div style={{ marginTop: 8 }}>
-        <NDIVelocimeter ndi={analysis.ndi} size={520} />
+      {/* Velocímetro - centrado y responsive */}
+      <div style={{ 
+        marginTop: 8, 
+        display: 'flex', 
+        justifyContent: 'center',
+        width: '100%',
+        overflow: 'hidden',
+      }}>
+        <NDIVelocimeter 
+          ndi={analysis.ndi} 
+          size={window.innerWidth < 600 ? 300 : 400} 
+        />
       </div>
 
       {/* Narrative Panel */}
@@ -275,11 +310,16 @@ export default function Dashboard() {
           background: C.card,
           border: `1px solid ${C.cardBorder}`,
           borderRadius: 12,
-          padding: 20,
-          marginTop: 16,
+          padding: window.innerWidth < 600 ? 14 : 20,
+          marginTop: 14,
         }}
       >
-        <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 16px 0', color: C.text }}>
+        <h3 style={{ 
+          fontSize: window.innerWidth < 600 ? 12 : 14, 
+          fontWeight: 600, 
+          margin: '0 0 12px 0', 
+          color: C.text 
+        }}>
           📊 Sector Performance (Avg NDI)
         </h3>
         {sectorPerformance.map((s) => (
@@ -288,15 +328,21 @@ export default function Dashboard() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 12,
-              marginBottom: 6,
+              gap: window.innerWidth < 600 ? 8 : 12,
+              marginBottom: window.innerWidth < 600 ? 4 : 6,
             }}
           >
-            <span style={{ width: 100, fontSize: 12, color: C.muted }}>{s.sector}</span>
+            <span style={{ 
+              width: window.innerWidth < 600 ? 70 : 100, 
+              fontSize: window.innerWidth < 600 ? 10 : 12, 
+              color: C.muted 
+            }}>
+              {s.sector}
+            </span>
             <div
               style={{
                 flex: 1,
-                height: 6,
+                height: window.innerWidth < 600 ? 4 : 6,
                 background: C.bg,
                 borderRadius: 4,
                 overflow: 'hidden',
@@ -312,7 +358,12 @@ export default function Dashboard() {
                 }}
               />
             </div>
-            <span style={{ width: 40, fontSize: 12, color: C.text, textAlign: 'right' }}>
+            <span style={{ 
+              width: 35, 
+              fontSize: window.innerWidth < 600 ? 10 : 12, 
+              color: C.text, 
+              textAlign: 'right' 
+            }}>
               {s.avgNDI.toFixed(2)}
             </span>
           </div>
