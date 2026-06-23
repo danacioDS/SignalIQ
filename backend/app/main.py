@@ -62,8 +62,30 @@ def log_error(msg, **kwargs):
 app = Flask(__name__)
 log_info("SignalIQ main.py loaded", event="startup")
 
-# Configurar CORS desde variable de entorno
-CORS(app, origins=os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(","))
+# ============================================================
+# CORS CONFIGURACIÓN ROBUSTA
+# ============================================================
+
+def get_cors_origins():
+    """Obtiene orígenes CORS de forma segura"""
+    env_origins = os.environ.get("CORS_ORIGINS")
+    if env_origins:
+        return [o.strip() for o in env_origins.split(",") if o.strip()]
+    
+    # Fallbacks por entorno
+    if os.environ.get("ENVIRONMENT") == "production":
+        return [
+            "https://signaliq-zeta-ten.vercel.app",
+            "https://signaliq-zeta.vercel.app",
+            "https://signaliq.vercel.app"
+        ]
+    else:
+        return ["http://localhost:3000", "http://localhost:5173"]
+
+cors_origins = get_cors_origins()
+CORS(app, origins=cors_origins, supports_credentials=True)
+
+print(f"✅ CORS Origins: {cors_origins}")
 
 
 redis_url = os.environ.get('REDIS_URL')
