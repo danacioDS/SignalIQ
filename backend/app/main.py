@@ -63,29 +63,22 @@ app = Flask(__name__)
 log_info("SignalIQ main.py loaded", event="startup")
 
 # ============================================================
-# CORS CONFIGURACIÓN ROBUSTA
+# CORS - CONFIGURACIÓN COMPLETA PARA PRODUCCIÓN
 # ============================================================
 
-def get_cors_origins():
-    """Obtiene orígenes CORS de forma segura"""
-    env_origins = os.environ.get("CORS_ORIGINS")
-    if env_origins:
-        return [o.strip() for o in env_origins.split(",") if o.strip()]
-    
-    # Fallbacks por entorno
-    if os.environ.get("ENVIRONMENT") == "production":
-        return [
-            "https://signaliq-zeta-ten.vercel.app",
-            "https://signaliq-zeta.vercel.app",
-            "https://signaliq.vercel.app"
-        ]
-    else:
-        return ["http://localhost:3000", "http://localhost:5173"]
-
-cors_origins = get_cors_origins()
-CORS(app, origins=cors_origins, supports_credentials=True)
-
-print(f"✅ CORS Origins: {cors_origins}")
+# Configuración específica para Vercel
+CORS(app, 
+     origins=[
+         "https://signaliq-zeta-ten.vercel.app",
+         "https://signaliq-zeta.vercel.app",
+         "http://localhost:3000",
+         "http://localhost:5173"
+     ],
+     methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+     expose_headers=["Content-Type", "X-Total-Count"],
+     supports_credentials=True,
+     max_age=600)  # Cache preflight por 10 minutos
 
 
 redis_url = os.environ.get('REDIS_URL')
