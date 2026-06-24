@@ -426,30 +426,93 @@ def api_analyze(ticker):
     if err:
         return jsonify({"error": err}), 400
 
-    if not model:
-        return jsonify({"error": "Gemini not configured"}), 500
-
+    ticker = ticker.strip().upper()
+    
+    # Obtener datos de la base de datos
+    conn = None
+    ndi = get_consistent_ndi(ticker)
+    sentiment = None
+    momentum = None
+    
     try:
-        ticker = ticker.strip().upper()
-        response = model.generate_content(f"Analyze {ticker} stock. Give BUY/SELL/HOLD.")
-        text = response.text
-
-        recommendation = "HOLD"
-        if "BUY" in text.upper():
-            recommendation = "BUY"
-        elif "SELL" in text.upper():
-            recommendation = "SELL"
-
-        return jsonify({
-            "success": True,
-            "ticker": ticker,
-            "recommendation": recommendation,
-            "analysis": text,
-            "timestamp": datetime.now().isoformat()
-        })
-
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT ndi, sentiment_zscore, momentum_zscore 
+            FROM layer4.signals 
+            WHERE ticker = %s 
+            ORDER BY signal_date DESC 
+            LIMIT 1
+        """, (ticker,))
+        row = cur.fetchone()
+        if row:
+            ndi = float(row[0])
+            sentiment = float(row[1]) if row[1] else None
+            momentum = float(row[2]) if row[2] else None
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        log_error(f"DB error for {ticker}: {e}")
+    finally:
+        if conn:
+            put_connection(conn)
+    
+    # Usar Groq para análisis (PRIMARY)
+    try:
+        analysis = llm_service.analyze_ticker(ticker, ndi, sentiment, momentum)
+        provider = "groq"
+    except Exception as e:
+        log_error(f"Groq error for {ticker}: {e}")
+        # Fallback a Gemini (SECONDARY)
+        if model:
+            try:
+                response = model.generate_content(
+                    f"Analyze {ticker} stock. Current NDI: {ndi:.3f}. Give recommendation."
+                )
+                analysis = response.text
+                provider = "gemini"
+            except Exception as e2:
+                log_error(f"Gemini error: {e2}")
+                analysis = f"⚠️ [FALLBACK] {ticker} shows NDI: +{ndi:.3f}."
+                provider = "none"
+        else:
+            analysis = f"⚠️ [FALLBACK] {ticker} shows NDI: +{ndi:.3f}."
+            provider = "none"
+    
+    # Determinar régimen
+    if ndi > 1.5:
+        regime = "Overheating"
+        regime_color = "red"
+    elif ndi > 0.7:
+        regime = "Watching"
+        regime_color = "yellow"
+    elif ndi > 0.3:
+        regime = "Accumulation"
+        regime_color = "blue"
+    else:
+        regime = "Aligned"
+        regime_color = "green"
+    
+    # Extraer recomendación
+    recommendation = "HOLD"
+    if analysis:
+        upper = analysis.upper()
+        if "BUY" in upper and "SELL" not in upper:
+            recommendation = "BUY"
+        elif "SELL" in upper and "BUY" not in upper:
+            recommendation = "SELL"
+    
+    return jsonify({
+        "success": True,
+        "ticker": ticker,
+        "ndi": round(ndi, 3) if ndi else None,
+        "regime": regime,
+        "regime_color": regime_color,
+        "sentiment": round(sentiment, 2) if sentiment else None,
+        "momentum": round(momentum, 2) if momentum else None,
+        "recommendation": recommendation,
+        "analysis": analysis,
+        "provider": provider,
+        "timestamp": datetime.now().isoformat()
+    })
 
 # ============================================================
 # ENDPOINT ANALYZE-LLM (GROQ + IA REAL)
