@@ -20,7 +20,7 @@ export default function TickerAnalysis({ ticker, onBack }: TickerAnalysisProps) 
       try {
         setLoading(true);
         setError("");
-        const response = await fetch(`https://signaliq-api.onrender.com/api/prices/${ticker}`);
+        const response = await fetch(`https://signaliq-l8mi.onrender.com/api/prices/${ticker}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const result = await response.json();
         if (result.error) throw new Error(result.error);

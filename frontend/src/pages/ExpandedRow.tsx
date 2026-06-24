@@ -41,7 +41,7 @@ const ExpandedRow: React.FC<ExpandedRowProps> = ({ ticker, baseSignal }) => {
         setLoading(true);
         setError(null);
         const response = await fetch(
-          `https://signaliq-api.onrender.com/api/signals-intel?ticker=${ticker}`
+          `https://signaliq-l8mi.onrender.com/api/signals-intel?ticker=${ticker}`
         );
         
         if (!response.ok) {

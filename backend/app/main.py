@@ -677,8 +677,20 @@ if not os.path.exists(static_dir):
     os.makedirs(static_dir, exist_ok=True)
 
 @app.route("/")
-def frontend_root():
-    return send_from_directory(static_dir, "index.html")
+def root():
+    return jsonify({
+        "service": "SignalIQ API",
+        "status": "online",
+        "version": "2026-06-17",
+        "documentation": "/api/health",
+        "endpoints": [
+            "/api/health",
+            "/api/version",
+            "/api/prices/<ticker>",
+            "/api/signals-live",
+            "/api/analyze-llm/<ticker>"
+        ]
+    })
 
 @app.route("/<path:path>")
 def frontend_catchall(path):
