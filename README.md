@@ -15,7 +15,7 @@ When narrative runs ahead of price action, SignalIQ flags it as exhaustion, dist
 
 ## 🚀 Live Demo
 
-**Production Dashboard:** [https://signaliq-zeta.vercel.app](https://signaliq-zeta.vercel.app)
+**Production Dashboard:** [https://signaliq-zeta-ten.vercel.app](https://signaliq-zeta-ten.vercel.app)
 
 The dashboard shows real-time signals for major tickers (NVDA, AAPL, MSFT, TSLA) with:
 - NDI values and regime classification (Overheating, Watching, Aligned)
@@ -72,7 +72,7 @@ cd ~/repo_lab/SignalIQ/frontend && CI=false vercel --prod --force
 
 ### Verify Production
 ```bash
-curl -I https://signaliq-zeta.vercel.app
+curl -I https://signaliq-zeta-ten.vercel.app
 ```
 
 ---
@@ -81,7 +81,7 @@ curl -I https://signaliq-zeta.vercel.app
 
 | Resource | Link |
 |----------|------|
-| **Production Dashboard** | [https://signaliq-zeta.vercel.app](https://signaliq-zeta.vercel.app) |
+| **Production Dashboard** | [https://signaliq-zeta-ten.vercel.app](https://signaliq-zeta-ten.vercel.app) |
 | **Source Code (GitHub)** | [https://github.com/danacioDS/SignalIQ](https://github.com/danacioDS/SignalIQ) |
 | **Original Documentation** | [https://github.com/danacioDS/SignalIQ/tree/docs](https://github.com/danacioDS/SignalIQ/tree/docs) |
 
@@ -178,7 +178,7 @@ pytest tests/pytest/ -m integration -v
 ## Deployment
 
 ### Frontend (Vercel)
-- **Production URL:** [https://signaliq-zeta.vercel.app](https://signaliq-zeta.vercel.app)
+- **Production URL:** [https://signaliq-zeta-ten.vercel.app](https://signaliq-zeta-ten.vercel.app)
 - **Deployment:** Automatic from `main` branch
 
 ### Backend (Render)
