@@ -97,30 +97,18 @@ event_classifier = EventClassifier()
 # GEMINI
 # ============================================================
 
-def get_api_key():
-    for key_name in [
-        "GEMINI_API_KEY_1",
-        "GEMINI_API_KEY_2",
-        "GEMINI_API_KEY_3",
-        "GEMINI_API_KEY",
-    ]:
-        key = os.environ.get(key_name)
-        if key:
-            return key
-    return None
-
-api_key = get_api_key()
+api_key = os.environ.get('GOOGLE_API_KEY')
 model = None
 
 if api_key:
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-2.0-flash")
-        print("✅ Gemini initialized")
+        print("✅ Gemini initialized with GOOGLE_API_KEY")
     except Exception as e:
         log_error(f"Gemini error: {e}")
 else:
-    print("❌ Gemini key missing")
+    print("❌ GOOGLE_API_KEY not found in environment")
 
 # ============================================================
 # DB CONNECTION POOL
