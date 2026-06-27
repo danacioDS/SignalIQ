@@ -2,16 +2,21 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Instalar dependencias del sistema
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copiar requirements.txt y instalar dependencias
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar TODO el contenido de la carpeta app/
+# Copiar el código
 COPY app/ ./app/
 
-# Establecer el puerto para Render
-ENV PORT=10000
+# Puerto
 EXPOSE 10000
 
-# Comando para ejecutar la aplicación
+# Comando para ejecutar
 CMD ["python", "-m", "app.main"]
