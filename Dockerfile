@@ -2,18 +2,21 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Copiar requirements y código
+# Instalar dependencias del sistema
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar requirements.txt desde backend/
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar todo el backend
-COPY backend/ .
+# Copiar el código de la aplicación desde backend/app/
+COPY backend/app/ ./app/
 
-# Copiar frontend build
-COPY backend/static/ /app/static/
-
-ENV PORT=10000
-ENV PYTHONPATH=/app
-
+# Puerto
 EXPOSE 10000
+
+# Comando para ejecutar
 CMD ["python", "-m", "app.main"]
