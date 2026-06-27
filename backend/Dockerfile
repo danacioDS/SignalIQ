@@ -8,11 +8,11 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar requirements.txt y instalar dependencias
+# Copiar requirements.txt
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar el código
+# Copiar el código de la aplicación
 COPY app/ ./app/
 
 # Puerto
