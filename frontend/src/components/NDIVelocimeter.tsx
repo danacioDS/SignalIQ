@@ -1,6 +1,7 @@
 /**
  * NDIVelocimeter.tsx
  * Velocímetro semicircular con panel lateral NDI Framework
+ * Armonizado con 6 Regímenes: Extreme Overheating, Overheating, Watching, Stable/Aligned, Accumulation, Strong Undervalued
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -11,7 +12,6 @@ import {
   getRegimeLabel,
   getRegimeColor,
   getRegimeIcon,
-  NDI_RANGE,
 } from '../utils/velocimeterUtils';
 
 interface NDIVelocimeterProps {
@@ -60,18 +60,61 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({
     { value: 2.0, label: '2.0' },
   ];
 
-  // Panel lateral - regímenes con valores
+  // ============================================================
+  // 6 REGÍMENES OFICIALES (armonizados con la tabla)
+  // ============================================================
   const regimeLevels = [
-    { value: 2.0, label: 'Extreme Overheating', color: '#ef4444', icon: '🔴', key: 'EXTREME_OVERHEATING' },
-    { value: 1.5, label: 'Overheating', color: '#f97316', icon: '🟠', key: 'OVERHEATING' },
-    { value: 0.5, label: 'Watching', color: '#eab308', icon: '🟡', key: 'WATCHING' },
-    { value: 0.0, label: 'Stable', color: '#22c55e', icon: '🟢', key: 'STABLE' },
-    { value: -0.5, label: 'Aligned', color: '#22c55e', icon: '🟢', key: 'ALIGNED' },
-    { value: -1.5, label: 'Strong Undervalued', color: '#3b82f6', icon: '🔵', key: 'STRONG_UNDERVALUED' },
-    { value: -2.0, label: 'Extreme Undervalued', color: '#1d4ed8', icon: '🔵', key: 'EXTREME_UNDERVALUED' },
+    { 
+      value: 2.0, 
+      label: 'Extreme Overheating', 
+      color: '#ef4444', 
+      icon: '🔴', 
+      key: 'EXTREME_OVERHEATING',
+      action: 'SELL'
+    },
+    { 
+      value: 1.5, 
+      label: 'Overheating', 
+      color: '#f97316', 
+      icon: '🟠', 
+      key: 'OVERHEATING',
+      action: 'REDUCE'
+    },
+    { 
+      value: 0.5, 
+      label: 'Watching', 
+      color: '#eab308', 
+      icon: '🟡', 
+      key: 'WATCHING',
+      action: 'MONITOR'
+    },
+    { 
+      value: 0.0, 
+      label: 'Stable / Aligned', 
+      color: '#22c55e', 
+      icon: '🟢', 
+      key: 'STABLE_ALIGNED',
+      action: 'HOLD'
+    },
+    { 
+      value: -0.5, 
+      label: 'Accumulation', 
+      color: '#3b82f6', 
+      icon: '🔵', 
+      key: 'ACCUMULATION',
+      action: 'BUY'
+    },
+    { 
+      value: -1.5, 
+      label: 'Strong Undervalued', 
+      color: '#1d4ed8', 
+      icon: '🔵', 
+      key: 'STRONG_UNDERVALUED',
+      action: 'STRONG BUY'
+    },
   ];
 
-  // Encontrar el régimen actual usando el key exacto
+  // Encontrar el régimen actual
   const currentRegimeIndex = regimeLevels.findIndex(r => r.key === regime);
 
   return (
@@ -243,7 +286,7 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({
 
       {/* ===== PANEL LATERAL: NDI FRAMEWORK ===== */}
       <div style={{
-        width: 200,
+        width: 220,
         padding: '16px 20px',
         background: C.card,
         borderRadius: 12,
@@ -259,7 +302,7 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({
           NDI = Sentiment − Momentum
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {regimeLevels.map((level, index) => {
             const isCurrent = index === currentRegimeIndex;
             
@@ -269,16 +312,16 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
+                  gap: 6,
                   padding: '3px 6px',
                   borderRadius: 4,
                   background: isCurrent ? `${level.color}25` : 'transparent',
                   borderLeft: isCurrent ? `3px solid ${level.color}` : '3px solid transparent',
                 }}
               >
-                <span style={{ fontSize: 12, color: level.color, width: 20 }}>{level.icon}</span>
+                <span style={{ fontSize: 12, color: level.color, width: 18 }}>{level.icon}</span>
                 <span style={{
-                  fontSize: 11,
+                  fontSize: 10,
                   color: isCurrent ? level.color : C.muted,
                   fontWeight: isCurrent ? 700 : 400,
                   flex: 1,
@@ -286,17 +329,26 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({
                   {level.label}
                 </span>
                 <span style={{
-                  fontSize: 10,
+                  fontSize: 9,
                   color: isCurrent ? '#ffffff' : C.muted,
                   fontWeight: isCurrent ? 700 : 400,
-                  width: 30,
+                  width: 36,
+                  textAlign: 'right',
+                }}>
+                  {level.action}
+                </span>
+                <span style={{
+                  fontSize: 9,
+                  color: isCurrent ? level.color : C.muted,
+                  fontWeight: isCurrent ? 700 : 400,
+                  width: 24,
                   textAlign: 'right',
                 }}>
                   {level.value.toFixed(1)}
                 </span>
                 {isCurrent && (
                   <span style={{ 
-                    fontSize: 16, 
+                    fontSize: 14, 
                     color: level.color,
                     fontWeight: 'bold',
                   }}>
@@ -309,17 +361,17 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({
         </div>
 
         <div style={{
-          marginTop: 12,
-          padding: '8px 12px',
+          marginTop: 10,
+          padding: '6px 12px',
           background: `${color}25`,
           borderRadius: 8,
           border: `2px solid ${color}`,
           textAlign: 'center',
         }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: color }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: color }}>
             {icon} {label}
           </span>
-          <span style={{ fontSize: 12, color: C.text, marginLeft: 8 }}>
+          <span style={{ fontSize: 11, color: C.text, marginLeft: 8 }}>
             NDI: {ndi > 0 ? `+${ndi.toFixed(3)}` : ndi.toFixed(3)}
           </span>
         </div>
