@@ -1,7 +1,7 @@
 /**
  * NDIVelocimeter.tsx
  * Velocímetro semicircular con panel lateral NDI Framework
- * Armonizado con 6 Regímenes: Extreme Overheating, Overheating, Watching, Stable/Aligned, Accumulation, Strong Undervalued
+ * Armonizado con 7 Regímenes: Extreme Overheating, Overheating, Watching, Stable/Aligned, Accumulation, Strong Undervalued, Extreme Undervalued
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -60,59 +60,74 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({
     { value: 2.0, label: '2.0' },
   ];
 
-  // ============================================================
-  // 6 REGÍMENES OFICIALES (armonizados con la tabla)
-  // ============================================================
-  const regimeLevels = [
-    { 
-      value: 2.0, 
-      label: 'Extreme Overheating', 
-      color: '#ef4444', 
-      icon: '🔴', 
-      key: 'EXTREME_OVERHEATING',
-      action: 'SELL'
-    },
-    { 
-      value: 1.5, 
-      label: 'Overheating', 
-      color: '#f97316', 
-      icon: '🟠', 
-      key: 'OVERHEATING',
-      action: 'REDUCE'
-    },
-    { 
-      value: 0.5, 
-      label: 'Watching', 
-      color: '#eab308', 
-      icon: '🟡', 
-      key: 'WATCHING',
-      action: 'MONITOR'
-    },
-    { 
-      value: 0.0, 
-      label: 'Stable / Aligned', 
-      color: '#22c55e', 
-      icon: '🟢', 
-      key: 'STABLE_ALIGNED',
-      action: 'HOLD'
-    },
-    { 
-      value: -0.5, 
-      label: 'Accumulation', 
-      color: '#3b82f6', 
-      icon: '🔵', 
-      key: 'ACCUMULATION',
-      action: 'BUY'
-    },
-    { 
-      value: -1.5, 
-      label: 'Strong Undervalued', 
-      color: '#1d4ed8', 
-      icon: '🔵', 
-      key: 'STRONG_UNDERVALUED',
-      action: 'STRONG BUY'
-    },
-  ];
+// ============================================================
+// 7 REGÍMENES OFICIALES (armonizados con la tabla económica)
+// ============================================================
+const regimeLevels = [
+  { 
+    value: 2.0, 
+    label: 'Extreme Overheating', 
+    color: '#ef4444', 
+    icon: '🔴', 
+    key: 'EXTREME_OVERHEATING',
+    action: 'SELL',
+    description: 'Euphoric market, price not rising'
+  },
+  { 
+    value: 1.5, 
+    label: 'Overheating', 
+    color: '#f97316', 
+    icon: '🟠', 
+    key: 'OVERHEATING',
+    action: 'REDUCE',
+    description: 'Strong optimism, momentum weakening'
+  },
+  { 
+    value: 0.5, 
+    label: 'Watching', 
+    color: '#eab308', 
+    icon: '🟡', 
+    key: 'WATCHING',
+    action: 'MONITOR',
+    description: 'Moderate divergence'
+  },
+  { 
+    value: 0.0, 
+    label: 'Stable / Aligned', 
+    color: '#22c55e', 
+    icon: '🟢', 
+    key: 'STABLE_ALIGNED',
+    action: 'HOLD',
+    description: 'Perfect equilibrium'
+  },
+  { 
+    value: -0.5, 
+    label: 'Accumulation', 
+    color: '#3b82f6', 
+    icon: '🔵', 
+    key: 'ACCUMULATION',
+    action: 'BUY',
+    description: 'Unjustified pessimism'
+  },
+  { 
+    value: -1.5, 
+    label: 'Strong Undervalued', 
+    color: '#1d4ed8', 
+    icon: '🔵', 
+    key: 'STRONG_UNDERVALUED',
+    action: 'STRONG BUY',
+    description: 'Significant oversold'
+  },
+  { 
+    value: -2.0, 
+    label: 'Extreme Undervalued', 
+    color: '#0f172a', 
+    icon: '🔵', 
+    key: 'EXTREME_UNDERVALUED',
+    action: 'ACCUMULATE',
+    description: 'Capitulation'
+  },
+];
 
   // Encontrar el régimen actual
   const currentRegimeIndex = regimeLevels.findIndex(r => r.key === regime);
@@ -131,11 +146,11 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({
           <defs>
             <linearGradient id="ndiArcGradient" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="#1d4ed8" stopOpacity="1" />
-              <stop offset="16%" stopColor="#3b82f6" stopOpacity="1" />
-              <stop offset="33%" stopColor="#22c55e" stopOpacity="1" />
+              <stop offset="14%" stopColor="#3b82f6" stopOpacity="1" />
+              <stop offset="28%" stopColor="#22c55e" stopOpacity="1" />
               <stop offset="50%" stopColor="#22c55e" stopOpacity="1" />
-              <stop offset="66%" stopColor="#eab308" stopOpacity="1" />
-              <stop offset="83%" stopColor="#f97316" stopOpacity="1" />
+              <stop offset="64%" stopColor="#eab308" stopOpacity="1" />
+              <stop offset="78%" stopColor="#f97316" stopOpacity="1" />
               <stop offset="100%" stopColor="#ef4444" stopOpacity="1" />
             </linearGradient>
             <filter id="needleShadow" x="-20%" y="-20%" width="140%" height="140%">
@@ -286,7 +301,7 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({
 
       {/* ===== PANEL LATERAL: NDI FRAMEWORK ===== */}
       <div style={{
-        width: 220,
+        width: 230,
         padding: '16px 20px',
         background: C.card,
         borderRadius: 12,
@@ -312,16 +327,16 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
+                  gap: 4,
                   padding: '3px 6px',
                   borderRadius: 4,
                   background: isCurrent ? `${level.color}25` : 'transparent',
                   borderLeft: isCurrent ? `3px solid ${level.color}` : '3px solid transparent',
                 }}
               >
-                <span style={{ fontSize: 12, color: level.color, width: 18 }}>{level.icon}</span>
+                <span style={{ fontSize: 12, color: level.color, width: 16 }}>{level.icon}</span>
                 <span style={{
-                  fontSize: 10,
+                  fontSize: 9,
                   color: isCurrent ? level.color : C.muted,
                   fontWeight: isCurrent ? 700 : 400,
                   flex: 1,
@@ -329,26 +344,26 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({
                   {level.label}
                 </span>
                 <span style={{
-                  fontSize: 9,
+                  fontSize: 8,
                   color: isCurrent ? '#ffffff' : C.muted,
                   fontWeight: isCurrent ? 700 : 400,
-                  width: 36,
+                  width: 40,
                   textAlign: 'right',
                 }}>
                   {level.action}
                 </span>
                 <span style={{
-                  fontSize: 9,
+                  fontSize: 8,
                   color: isCurrent ? level.color : C.muted,
                   fontWeight: isCurrent ? 700 : 400,
-                  width: 24,
+                  width: 22,
                   textAlign: 'right',
                 }}>
                   {level.value.toFixed(1)}
                 </span>
                 {isCurrent && (
                   <span style={{ 
-                    fontSize: 14, 
+                    fontSize: 12, 
                     color: level.color,
                     fontWeight: 'bold',
                   }}>
