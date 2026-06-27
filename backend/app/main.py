@@ -25,6 +25,8 @@ import psycopg2.extras
 
 from app.scoring.signal_score import SignalIQScore
 from app.classification.event_classifier import EventClassifier
+from app.db import init_pool, close_pool, execute_query, execute_query_one, get_connection, put_connection
+from app.llm_service import llm_service
 
 # ============================================================
 # STRUCTURED LOGGING
@@ -64,19 +66,20 @@ log_info("SignalIQ main.py loaded", event="startup")
 # CORS - CONFIGURACIÓN COMPLETA PARA PRODUCCIÓN
 # ============================================================
 
+# Configuración específica para Vercel
 CORS(app, 
      origins=[
          "https://signaliq-zeta-ten.vercel.app",
          "https://signaliq-zeta.vercel.app",
          "http://localhost:3000",
-         "http://localhost:5173",
-         "https://signaliq-api.onrender.com"
+         "http://localhost:5173"
      ],
      methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-API-Key"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
      expose_headers=["Content-Type", "X-Total-Count"],
      supports_credentials=True,
-     max_age=600)
+     max_age=600)  # Cache preflight por 10 minutos
+
 
 redis_url = os.environ.get('REDIS_URL')
 limiter = Limiter(
@@ -141,6 +144,7 @@ _TICKER_RE = _re.compile(r"^[A-Z0-9-]{1,10}$")
 _MAX_TICKER_LEN = 10
 
 def _validate_ticker(ticker: str) -> str | None:
+    """Validate and normalise a ticker symbol."""
     if not ticker or not ticker.strip():
         return "Ticker symbol is required"
     cleaned = ticker.strip().upper()
@@ -203,6 +207,7 @@ def _validate_classify_input(data: dict) -> list[str]:
 # ============================================================
 
 def get_consistent_ndi(ticker: str) -> float:
+    """NDI consistente por ticker (fallback cuando no hay datos en BD)"""
     ndi_map = {
         'NVDA': 0.738, 'AAPL': 0.522, 'MSFT': 0.668, 'TSLA': 0.532,
         'GOOGL': 0.485, 'META': 0.612, 'AMZN': 0.445, 'AMD': 0.558,
@@ -211,18 +216,20 @@ def get_consistent_ndi(ticker: str) -> float:
     return ndi_map.get(ticker, 0.45)
 
 # ============================================================
-# PRICES
+# PRICES (CON YFINANCE, SIN FINNHUB)
 # ============================================================
 
 @app.route('/api/prices/<ticker>')
 @limiter.limit("10 per minute")
 def api_prices(ticker):
+    """Obtiene datos de precios desde la base de datos (Layer 2)"""
     err = _validate_ticker(ticker)
     if err:
         return jsonify({'error': err}), 400
     
     ticker = ticker.strip().upper()
     
+    # Intentar obtener datos de la base de datos
     conn = None
     try:
         conn = get_connection()
@@ -237,6 +244,7 @@ def api_prices(ticker):
         rows = cur.fetchall()
         
         if rows:
+            # Invertir para obtener orden cronológico
             rows.reverse()
             
             price_history = []
@@ -251,6 +259,7 @@ def api_prices(ticker):
             current_price = closes[-1]
             prev_price = closes[-5] if len(closes) >= 5 else closes[0]
             
+            # Calcular NDI
             if len(closes) > 1:
                 daily_return = (closes[-1] - closes[-2]) / closes[-2]
                 sentiment = 0.5 + (daily_return * 0.5)
@@ -316,7 +325,7 @@ def api_prices(ticker):
 def api_health():
     return jsonify({
         "status": "ok",
-        "mode": "REAL",
+        "mode": "REAL" if model else "MOCK",
         "timestamp": datetime.now().isoformat()
     })
 
@@ -410,10 +419,6 @@ def api_routes():
         "routes": sorted([str(r) for r in app.url_map.iter_rules() if r.rule.startswith('/api')])
     })
 
-# ============================================================
-# ANALYZE CON GROQ (SIN AUTENTICACIÓN)
-# ============================================================
-
 @app.route("/api/analyze/<ticker>")
 @limiter.limit("10 per minute")
 def api_analyze(ticker):
@@ -423,15 +428,17 @@ def api_analyze(ticker):
 
     ticker = ticker.strip().upper()
     
+    # Obtener datos de la base de datos
     conn = None
     ndi = get_consistent_ndi(ticker)
-    confidence = None
+    sentiment = None
+    momentum = None
     
     try:
         conn = get_connection()
         cur = conn.cursor()
         cur.execute("""
-            SELECT ndi, confidence
+            SELECT ndi, sentiment_zscore, momentum_zscore 
             FROM layer4.signals 
             WHERE ticker = %s 
             ORDER BY signal_date DESC 
@@ -440,31 +447,37 @@ def api_analyze(ticker):
         row = cur.fetchone()
         if row:
             ndi = float(row[0])
-            confidence = float(row[1]) if row[1] else None
+            sentiment = float(row[1]) if row[1] else None
+            momentum = float(row[2]) if row[2] else None
     except Exception as e:
         log_error(f"DB error for {ticker}: {e}")
     finally:
         if conn:
             put_connection(conn)
     
-    analysis = None
-    provider = None
-    
-    # Usar Groq
+    # Usar Groq para análisis (PRIMARY)
     try:
-        analysis = llm_service.analyze_ticker(ticker, ndi, None, None)
+        analysis = llm_service.analyze_ticker(ticker, ndi, sentiment, momentum)
         provider = "groq"
-        log_info(f"✅ Análisis generado para {ticker}")
     except Exception as e:
-        log_error(f"Error generando análisis para {ticker}: {e}")
-        if ndi > 0.7:
-            analysis = f"{ticker} shows overheating divergence (NDI: +{ndi:.3f}). Recommendation: Reduce exposure. Risk: High."
-        elif ndi > 0.3:
-            analysis = f"{ticker} exhibits accumulation divergence (NDI: +{ndi:.3f}). Recommendation: Hold with caution. Risk: Moderate."
+        log_error(f"Groq error for {ticker}: {e}")
+        # Fallback a Gemini (SECONDARY)
+        if model:
+            try:
+                response = model.generate_content(
+                    f"Analyze {ticker} stock. Current NDI: {ndi:.3f}. Give recommendation."
+                )
+                analysis = response.text
+                provider = "gemini"
+            except Exception as e2:
+                log_error(f"Gemini error: {e2}")
+                analysis = f"⚠️ [FALLBACK] {ticker} shows NDI: +{ndi:.3f}."
+                provider = "none"
         else:
-            analysis = f"{ticker} is in aligned regime (NDI: +{ndi:.3f}). Recommendation: Hold. Risk: Low."
-        provider = "fallback"
+            analysis = f"⚠️ [FALLBACK] {ticker} shows NDI: +{ndi:.3f}."
+            provider = "none"
     
+    # Determinar régimen
     if ndi > 1.5:
         regime = "Overheating"
         regime_color = "red"
@@ -478,6 +491,7 @@ def api_analyze(ticker):
         regime = "Aligned"
         regime_color = "green"
     
+    # Extraer recomendación
     recommendation = "HOLD"
     if analysis:
         upper = analysis.upper()
@@ -492,7 +506,8 @@ def api_analyze(ticker):
         "ndi": round(ndi, 3) if ndi else None,
         "regime": regime,
         "regime_color": regime_color,
-        "confidence": round(confidence, 1) if confidence else None,
+        "sentiment": round(sentiment, 2) if sentiment else None,
+        "momentum": round(momentum, 2) if momentum else None,
         "recommendation": recommendation,
         "analysis": analysis,
         "provider": provider,
@@ -500,12 +515,13 @@ def api_analyze(ticker):
     })
 
 # ============================================================
-# ANALYZE-LLM
+# ENDPOINT ANALYZE-LLM (GROQ + IA REAL)
 # ============================================================
 
 @app.route('/api/analyze-llm/<ticker>')
 @limiter.limit("10 per minute")
 def api_analyze_llm(ticker):
+    """Analiza un ticker con IA (Groq) y devuelve NDI + análisis"""
     err = _validate_ticker(ticker)
     if err:
         return jsonify({'error': err, 'type': 'validation'}), 400
@@ -513,47 +529,47 @@ def api_analyze_llm(ticker):
     ticker = ticker.strip().upper()
     
     conn = None
-    ndi = get_consistent_ndi(ticker)
-    
     try:
         conn = get_connection()
         cur = conn.cursor()
         cur.execute("""
-            SELECT ndi
+            SELECT ndi, sentiment_zscore, momentum_zscore 
             FROM layer4.signals 
             WHERE ticker = %s 
             ORDER BY signal_date DESC 
             LIMIT 1
         """, (ticker,))
         row = cur.fetchone()
+        
         if row:
             ndi = float(row[0])
+            sentiment = float(row[1]) if row[1] else None
+            momentum = float(row[2]) if row[2] else None
+        else:
+            ndi = get_consistent_ndi(ticker)
+            sentiment = None
+            momentum = None
     except Exception as e:
         log_error(f"DB error for {ticker}: {e}")
+        ndi = get_consistent_ndi(ticker)
+        sentiment = None
+        momentum = None
     finally:
         if conn:
             put_connection(conn)
     
-    analysis = None
-    provider = None
-    
     try:
-        analysis = llm_service.analyze_ticker(ticker, ndi, None, None)
-        provider = "groq"
+        analysis = llm_service.analyze_ticker(ticker, ndi, sentiment, momentum)
     except Exception as e:
-        log_error(f"Groq error: {e}")
-        analysis = f"NDI: {ndi:.3f}. {ticker} in watching regime."
-        provider = "fallback"
+        log_error(f"Groq error for {ticker}: {e}")
+        analysis = f"⚠️ [FALLBACK] {ticker} shows NDI: +{ndi:.3f}. Analysis unavailable due to LLM error."
     
-    if ndi > 1.5:
+    if ndi > 0.7:
         regime = "Overheating Divergence"
         regime_color = "red"
-    elif ndi > 0.7:
-        regime = "Watching"
-        regime_color = "yellow"
     elif ndi > 0.3:
         regime = "Accumulation Divergence"
-        regime_color = "blue"
+        regime_color = "yellow"
     else:
         regime = "Aligned"
         regime_color = "green"
@@ -561,21 +577,23 @@ def api_analyze_llm(ticker):
     return jsonify({
         'success': True,
         'ticker': ticker,
-        'ndi': round(ndi, 3) if ndi else None,
+        'ndi': round(ndi, 3),
         'regime': regime,
         'regime_color': regime_color,
+        'sentiment': round(sentiment, 2) if sentiment else None,
+        'momentum': round(momentum, 2) if momentum else None,
         'confidence': round(0.5 + abs(ndi) * 0.5, 2) if ndi else 0.5,
-        'analysis': analysis,
-        'provider': provider
+        'analysis': analysis
     })
 
 # ============================================================
-# SIGNALS-LIVE
+# SIGNALS-LIVE (CON YFINANCE - SIN API KEY)
 # ============================================================
 
 @app.route('/api/signals-live')
 @limiter.limit("30 per minute")
 def api_signals_live():
+    """Obtiene señales en vivo desde la base de datos"""
     tickers_param = request.args.get('tickers', 'NVDA,AAPL,MSFT,TSLA,GOOGL,META,AMD,AMZN,JPM,KO')
     tickers_list = [t.strip().upper() for t in tickers_param.split(',') if t.strip()]
     
@@ -599,10 +617,12 @@ def api_signals_live():
                 rows = cur.fetchall()
                 
                 if rows:
+                    # Invertir para orden cronológico
                     rows.reverse()
                     closes = [float(row[1]) for row in rows]
                     current_price = closes[-1]
                     
+                    # Calcular NDI
                     if len(closes) > 1:
                         daily_return = (closes[-1] - closes[-2]) / closes[-2]
                         sentiment = 0.5 + (daily_return * 0.5)
@@ -656,14 +676,14 @@ def api_signals_live():
         'timestamp': datetime.now().isoformat(),
         'source': 'database'
     })
-
 # ============================================================
-# SIGNALS-INTEL
+# ENDPOINT SIGNALS-INTEL (EVENTS + NARRATIVE)
 # ============================================================
 
 @app.route('/api/signals-intel')
 @limiter.limit("30 per minute")
 def api_signals_intel():
+    """Obtiene EVENTS + NARRATIVE desde intel_signals."""
     ticker = request.args.get('ticker', '').strip().upper()
     if not ticker:
         return jsonify({'error': 'Ticker parameter is required'}), 400
@@ -687,8 +707,11 @@ def api_signals_intel():
                 'error': f'No intelligence data found for {ticker}'
             }), 404
 
+        # Parsear JSONB
         events = row['events'] if row['events'] else []
         narrative = row['narrative'] if row['narrative'] else []
+
+        # Extraer solo labels de eventos
         event_labels = [e.get('label', '') for e in events if e.get('label')]
 
         return jsonify({
@@ -753,8 +776,8 @@ if __name__ == "__main__":
     print("=" * 60)
     print(f"📍 Port: {port}")
     print(f"📁 Static dir: {static_dir}")
-    print(f"🔧 Mode: REAL")
-    print(f"📊 Fuente principal: yfinance")
+    print(f"🔧 Mode: {'REAL' if model else 'MOCK'}")
+    print(f"📊 Fuente principal: yfinance (sin API key)")
     print(f"📋 API Routes: {len([r for r in app.url_map.iter_rules() if r.rule.startswith('/api')])}")
     print("=" * 60 + "\n")
 
