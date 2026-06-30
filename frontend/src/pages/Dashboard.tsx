@@ -281,7 +281,7 @@ export default function Dashboard() {
     confidence: 0,
   };
 
-  const analysis = useSignalAnalysis(signal);
+  const analysis = useSignalAnalysis(signal.ndi ?? 0);
   const tickerList = signals.map(s => s.ticker);
   const ndiMap = Object.fromEntries(signals.map(s => [s.ticker, s.ndi]));
 
