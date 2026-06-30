@@ -18,6 +18,7 @@ import time
 import yfinance as yf
 import google.generativeai as genai
 import requests
+import numpy as np
 
 from app.db import init_pool, close_pool, execute_query, execute_query_one, get_connection, put_connection
 from app.llm_service import llm_service
@@ -199,7 +200,7 @@ def get_consistent_ndi(ticker: str) -> float:
     return ndi_map.get(ticker, 0.45)
 
 # ============================================================
-# PRICES
+# PRICES (CORREGIDO - FÓRMULA CANÓNICA)
 # ============================================================
 
 @app.route('/api/prices/<ticker>')
@@ -226,58 +227,120 @@ def api_prices(ticker):
         
         if rows:
             rows.reverse()
+            closes = [float(row[1]) for row in rows]
+            current_price = closes[-1]
+            prev_price = closes[-5] if len(closes) >= 5 else closes[0]
             
+            # ============================================================
+            # ✅ NDI CANÓNICO: sentiment_zscore - momentum_zscore
+            # ============================================================
+            
+            # 1. Calcular sentiment_zscore (z-score de retornos diarios)
+            daily_returns = []
+            for i in range(1, len(closes)):
+                if closes[i-1] > 0:
+                    daily_returns.append((closes[i] - closes[i-1]) / closes[i-1])
+            
+            if len(daily_returns) >= 2:
+                mean_ret = np.mean(daily_returns)
+                std_ret = np.std(daily_returns)
+                sentiment_zscore = (daily_returns[-1] - mean_ret) / std_ret if std_ret > 0 else 0
+            else:
+                sentiment_zscore = 0
+            
+            # 2. Calcular momentum_zscore (z-score de retorno a 20 días)
+            if len(closes) >= 20:
+                momentum_returns = []
+                for i in range(20, len(closes)):
+                    if closes[i-20] > 0:
+                        momentum_returns.append((closes[i] / closes[i-20] - 1))
+                if len(momentum_returns) >= 2:
+                    mean_mom = np.mean(momentum_returns)
+                    std_mom = np.std(momentum_returns)
+                    momentum_zscore = (momentum_returns[-1] - mean_mom) / std_mom if std_mom > 0 else 0
+                else:
+                    momentum_zscore = 0
+            else:
+                momentum_zscore = 0
+            
+            # 3. ✅ NDI = sentiment_zscore - momentum_zscore
+            ndi = sentiment_zscore - momentum_zscore
+            ndi = max(-3.0, min(3.0, ndi))
+            
+            # 4. Clasificar régimen (7 niveles, igual que frontend)
+            if ndi > 2.0:
+                regime = "Extreme Overheating"
+                regime_color = "red"
+                regime_code = "EXTREME_OVERHEATING"
+                recommendation = "SELL"
+            elif ndi > 1.5:
+                regime = "Overheating"
+                regime_color = "orange"
+                regime_code = "OVERHEATING"
+                recommendation = "REDUCE"
+            elif ndi > 0.5:
+                regime = "Watching"
+                regime_color = "yellow"
+                regime_code = "WATCHING"
+                recommendation = "MONITOR"
+            elif ndi > -0.5:
+                regime = "Stable"
+                regime_color = "green"
+                regime_code = "STABLE"
+                recommendation = "HOLD"
+            elif ndi > -1.5:
+                regime = "Aligned"
+                regime_color = "green"
+                regime_code = "ALIGNED"
+                recommendation = "HOLD"
+            elif ndi > -2.0:
+                regime = "Strong Undervalued"
+                regime_color = "blue"
+                regime_code = "STRONG_UNDERVALUED"
+                recommendation = "BUY"
+            else:
+                regime = "Extreme Undervalued"
+                regime_color = "darkblue"
+                regime_code = "EXTREME_UNDERVALUED"
+                recommendation = "ACCUMULATE"
+            
+            # 5. Confianza (inverted-U)
+            abs_ndi = abs(ndi)
+            if abs_ndi <= 0.8:
+                confidence = 50 + (abs_ndi / 0.8) * 40
+            elif abs_ndi <= 2.0:
+                confidence = 90 - ((abs_ndi - 0.8) / 1.2) * 40
+            else:
+                confidence = 50
+            confidence = max(10, min(95, confidence))
+            
+            # 6. Construir price_history
             price_history = []
-            closes = []
             for row in rows:
                 price_history.append({
                     'date': row[0].strftime('%Y-%m-%d'),
                     'close': float(row[1])
                 })
-                closes.append(float(row[1]))
-            
-            current_price = closes[-1]
-            prev_price = closes[-5] if len(closes) >= 5 else closes[0]
-            
-            if len(closes) > 1:
-                daily_return = (closes[-1] - closes[-2]) / closes[-2]
-                sentiment = 0.5 + (daily_return * 0.5)
-            else:
-                sentiment = 0.5
-            sentiment = max(0.1, min(0.9, sentiment))
-            
-            if len(closes) >= 20:
-                momentum = (closes[-1] / closes[-20] - 1) * 100
-            else:
-                momentum = 0
-            
-            ndi = sentiment - (momentum / 100)
-            ndi = max(-2.0, min(2.0, ndi))
-            
-            if ndi > 1.5:
-                regime = "Overheating"
-                regime_color = "red"
-            elif ndi > 0.5:
-                regime = "Watching"
-                regime_color = "yellow"
-            else:
-                regime = "Aligned"
-                regime_color = "green"
             
             return jsonify({
                 'success': True,
                 'ticker': ticker,
                 'current_price': round(current_price, 2),
                 'prev_price': round(prev_price, 2),
-                'sentiment': round(sentiment, 3),
-                'momentum': round(momentum, 2),
+                'sentiment_zscore': round(sentiment_zscore, 3),
+                'momentum_zscore': round(momentum_zscore, 3),
+                'sentiment': round(sentiment_zscore, 3),  # Backward compatibility
+                'momentum': round(momentum_zscore, 3),     # Backward compatibility
                 'ndi': round(ndi, 3),
                 'regime': regime,
+                'regime_code': regime_code,
                 'regime_color': regime_color,
-                'confidence': round(70 + (abs(ndi) * 15), 1),
-                'recommendation': f"{ticker} shows {regime.lower()} divergence.",
+                'confidence': round(confidence, 1),
+                'recommendation': recommendation,
+                'recommendation_text': f"{ticker} shows {regime.lower()} divergence (NDI: {ndi:.3f}).",
                 'price_history': price_history,
-                'source': 'database'
+                'source': 'database',
+                'formula': 'sentiment_zscore - momentum_zscore'
             })
         else:
             return jsonify({
@@ -557,7 +620,7 @@ def api_analyze_llm(ticker):
     })
 
 # ============================================================
-# SIGNALS-LIVE
+# SIGNALS-LIVE (CORREGIDO - FÓRMULA CANÓNICA)
 # ============================================================
 
 @app.route('/api/signals-live')
@@ -590,39 +653,88 @@ def api_signals_live():
                     closes = [float(row[1]) for row in rows]
                     current_price = closes[-1]
                     
-                    if len(closes) > 1:
-                        daily_return = (closes[-1] - closes[-2]) / closes[-2]
-                        sentiment = 0.5 + (daily_return * 0.5)
-                    else:
-                        sentiment = 0.5
-                    sentiment = max(0.1, min(0.9, sentiment))
+                    # ============================================================
+                    # ✅ NDI CANÓNICO: sentiment_zscore - momentum_zscore
+                    # ============================================================
                     
+                    # 1. Calcular sentiment_zscore (z-score de retornos diarios)
+                    daily_returns = []
+                    for i in range(1, len(closes)):
+                        if closes[i-1] > 0:
+                            daily_returns.append((closes[i] - closes[i-1]) / closes[i-1])
+                    
+                    if len(daily_returns) >= 2:
+                        mean_ret = np.mean(daily_returns)
+                        std_ret = np.std(daily_returns)
+                        sentiment_zscore = (daily_returns[-1] - mean_ret) / std_ret if std_ret > 0 else 0
+                    else:
+                        sentiment_zscore = 0
+                    
+                    # 2. Calcular momentum_zscore (z-score de retorno a 20 días)
                     if len(closes) >= 20:
-                        momentum = (closes[-1] / closes[-20] - 1) * 100
+                        momentum_returns = []
+                        for i in range(20, len(closes)):
+                            if closes[i-20] > 0:
+                                momentum_returns.append((closes[i] / closes[i-20] - 1))
+                        if len(momentum_returns) >= 2:
+                            mean_mom = np.mean(momentum_returns)
+                            std_mom = np.std(momentum_returns)
+                            momentum_zscore = (momentum_returns[-1] - mean_mom) / std_mom if std_mom > 0 else 0
+                        else:
+                            momentum_zscore = 0
                     else:
-                        momentum = 0
+                        momentum_zscore = 0
                     
-                    ndi = sentiment - (momentum / 100)
-                    ndi = max(-2.0, min(2.0, ndi))
+                    # 3. ✅ NDI = sentiment_zscore - momentum_zscore
+                    ndi = sentiment_zscore - momentum_zscore
                     
-                    if ndi > 0.7:
-                        regime = "Overheating"
+                    # 4. Limitar a rango razonable
+                    ndi = max(-3.0, min(3.0, ndi))
+                    
+                    # 5. Clasificar régimen (usando los mismos thresholds que el frontend)
+                    if ndi > 2.0:
+                        regime = "Extreme Overheating"
                         color = "red"
-                    elif ndi > 0.3:
+                    elif ndi > 1.5:
+                        regime = "Overheating"
+                        color = "orange"
+                    elif ndi > 0.5:
                         regime = "Watching"
                         color = "yellow"
-                    else:
+                    elif ndi > -0.5:
+                        regime = "Stable"
+                        color = "green"
+                    elif ndi > -1.5:
                         regime = "Aligned"
                         color = "green"
+                    elif ndi > -2.0:
+                        regime = "Strong Undervalued"
+                        color = "blue"
+                    else:
+                        regime = "Extreme Undervalued"
+                        color = "darkblue"
+                    
+                    # 6. Calcular confianza (inverted-U)
+                    abs_ndi = abs(ndi)
+                    if abs_ndi <= 0.8:
+                        confidence = 50 + (abs_ndi / 0.8) * 40
+                    elif abs_ndi <= 2.0:
+                        confidence = 90 - ((abs_ndi - 0.8) / 1.2) * 40
+                    else:
+                        confidence = 50
+                    confidence = max(10, min(95, confidence))
                     
                     results.append({
                         'ticker': ticker,
                         'current_price': round(current_price, 2),
                         'ndi': round(ndi, 3),
+                        'sentiment_zscore': round(sentiment_zscore, 3),
+                        'momentum_zscore': round(momentum_zscore, 3),
                         'regime': regime,
                         'color': color,
-                        'confidence': round(70 + (abs(ndi) * 15), 1),
-                        'source': 'database'
+                        'confidence': round(confidence, 1),
+                        'source': 'database',
+                        'formula': 'sentiment_zscore - momentum_zscore'  # ✅ Documentar
                     })
                 else:
                     errors.append(f"No data found for {ticker}")
@@ -641,7 +753,8 @@ def api_signals_live():
         'signals': results,
         'errors': errors if errors else None,
         'timestamp': datetime.now().isoformat(),
-        'source': 'database'
+        'source': 'database',
+        'formula': 'sentiment_zscore - momentum_zscore'  # ✅ Documentar
     })
 
 # ============================================================

@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { C } from '../components/styles';
 import { NDIVelocimeter } from '../components/NDIVelocimeter';
 import { TickerFocusStrip } from '../components/TickerFocusStrip';
-import { NarrativePanel } from '../components/NarrativePanel';
+import NarrativePanel from '../components/NarrativePanel';
 import {
   AreaChart,
   Area,

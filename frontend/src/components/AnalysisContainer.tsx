@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSignalAnalysis } from '../hooks/useSignalAnalysis';
 import { NDIVelocimeter } from './NDIVelocimeter';
-import { NarrativePanel } from './NarrativePanel';
+import NarrativePanel from './NarrativePanel';
 
 interface AnalysisContainerProps {
   signal: {
