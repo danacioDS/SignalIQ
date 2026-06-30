@@ -15,7 +15,8 @@ import {
 import { useSignalAnalysis } from '../hooks/useSignalAnalysis';
 
 // ==================== CONFIGURACIÓN ====================
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+// Usar variable de entorno o fallback a producción
+const API_BASE = process.env.REACT_APP_API_URL || 'https://signaliq-api.onrender.com';
 const REFRESH_INTERVAL = 5 * 60 * 1000;
 
 const api = {
