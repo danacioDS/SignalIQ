@@ -2,21 +2,18 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Instalar dependencias del sistema
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copiar requirements.txt
-COPY requirements.txt .
+# Copiar requirements y instalar dependencias
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar el código de la aplicación
-COPY app/ ./app/
+# Copiar el código del backend
+COPY backend/ .
 
-# Puerto
+# Variables de entorno
+ENV PORT=10000
+ENV PYTHONUNBUFFERED=1
+
 EXPOSE 10000
 
-# Comando para ejecutar
+# Comando para iniciar la aplicación
 CMD ["python", "-m", "app.main"]
