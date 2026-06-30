@@ -1,6 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+/**
+ * Dashboard.tsx
+ * SignalIQ - Instrument Cluster Dashboard (Production Ready v2)
+ */
+
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { C } from '../components/styles';
-import { NDIGauge } from '../components/NDIGauge';
+import { NDIVelocimeter } from '../components/NDIVelocimeter';
 import { TickerFocusStrip } from '../components/TickerFocusStrip';
 import NarrativePanel from '../components/NarrativePanel';
 import {
@@ -15,8 +20,9 @@ import {
 import { useSignalAnalysis } from '../hooks/useSignalAnalysis';
 
 // ==================== CONFIGURACIÓN ====================
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:10000';
-const REFRESH_INTERVAL = 5 * 60 * 1000;
+// ✅ URL CORRECTA PARA PRODUCCIÓN
+const API_BASE = 'https://signaliq-api.onrender.com';
+const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutos
 
 const api = {
   signals: (tickers: string[]) => 
@@ -43,7 +49,7 @@ const sectorMap: Record<string, string> = {
   GOOGL: 'Technology',
   META: 'Technology',
   AMD: 'Technology',
-  AMZN: 'Consumer',
+  AMZN: 'Technology',
   TSLA: 'Automotive',
   JPM: 'Financial',
   BAC: 'Financial',
@@ -65,94 +71,9 @@ const defaultTickers = [
   'META','AMD','AMZN','JPM','KO'
 ];
 
-// ==================== COMPONENTE NDI FRAMEWORK ====================
-const NDIFrameworkTable: React.FC<{ ndi: number; regime: string }> = ({ ndi, regime }) => {
-  const regimes = [
-    { economics: 'Euphoric market, price not rising', ndiRange: 'NDI > 2.0', action: '🔴 SELL', key: 'extreme_overheating' },
-    { economics: 'Strong optimism, momentum weakening', ndiRange: '1.5 < NDI ≤ 2.0', action: '🟠 REDUCE', key: 'overheating' },
-    { economics: 'Moderate divergence', ndiRange: '0.5 < NDI ≤ 1.5', action: '🟡 MONITOR', key: 'watching' },
-    { economics: 'Perfect equilibrium', ndiRange: '-0.5 < NDI ≤ 0.5', action: '🟢 HOLD', key: 'stable' },
-    { economics: 'Unjustified pessimism', ndiRange: '-1.5 < NDI ≤ -0.5', action: '🔵 BUY', key: 'aligned' },
-    { economics: 'Significant oversold', ndiRange: '-2.0 < NDI ≤ -1.5', action: '🔵 STRONG BUY', key: 'strong_undervalued' },
-    { economics: 'Capitulation', ndiRange: 'NDI ≤ -2.0', action: '🔵 ACCUMULATE', key: 'extreme_undervalued' },
-  ];
-
-  const getRowStyle = (key: string) => {
-    let isActive = false;
-    if (key === 'extreme_overheating' && ndi > 2.0) isActive = true;
-    else if (key === 'overheating' && ndi > 1.5 && ndi <= 2.0) isActive = true;
-    else if (key === 'watching' && ndi > 0.5 && ndi <= 1.5) isActive = true;
-    else if (key === 'stable' && ndi > -0.5 && ndi <= 0.5) isActive = true;
-    else if (key === 'aligned' && ndi > -1.5 && ndi <= -0.5) isActive = true;
-    else if (key === 'strong_undervalued' && ndi > -2.0 && ndi <= -1.5) isActive = true;
-    else if (key === 'extreme_undervalued' && ndi <= -2.0) isActive = true;
-    
-    return {
-      backgroundColor: isActive ? 'rgba(108, 99, 255, 0.15)' : 'transparent',
-      borderLeft: isActive ? `3px solid ${C.accent}` : '3px solid transparent',
-      fontWeight: isActive ? 'bold' : 'normal',
-    };
-  };
-
-  return (
-    <div style={{
-      backgroundColor: C.card,
-      borderRadius: '12px',
-      padding: '16px',
-      border: `1px solid ${C.cardBorder}`,
-      width: '100%',
-    }}>
-      <h4 style={{ color: C.text, margin: '0 0 12px 0', fontSize: '14px' }}>
-        📊 NDI Framework
-      </h4>
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: '1fr 0.8fr 0.8fr',
-        gap: '4px',
-        fontSize: '12px',
-      }}>
-        <div style={{ color: C.muted, fontWeight: 'bold', padding: '4px 8px', borderBottom: `1px solid ${C.cardBorder}` }}>
-          Economics
-        </div>
-        <div style={{ color: C.muted, fontWeight: 'bold', padding: '4px 8px', borderBottom: `1px solid ${C.cardBorder}` }}>
-          NDI
-        </div>
-        <div style={{ color: C.muted, fontWeight: 'bold', padding: '4px 8px', borderBottom: `1px solid ${C.cardBorder}` }}>
-          Action
-        </div>
-        {regimes.map((item) => {
-          const style = getRowStyle(item.key);
-          return (
-            <React.Fragment key={item.key}>
-              <div style={{ ...style, padding: '6px 8px', color: C.text }}>
-                {item.economics}
-              </div>
-              <div style={{ ...style, padding: '6px 8px', color: C.text, fontFamily: 'monospace' }}>
-                {item.ndiRange}
-              </div>
-              <div style={{ ...style, padding: '6px 8px', color: C.text }}>
-                {item.action}
-              </div>
-            </React.Fragment>
-          );
-        })}
-      </div>
-      <div style={{ 
-        marginTop: '8px', 
-        fontSize: '11px', 
-        color: C.muted,
-        padding: '4px 8px',
-        backgroundColor: C.accentBg,
-        borderRadius: '4px',
-      }}>
-        💡 Current NDI: {ndi.toFixed(3)} - {regime}
-      </div>
-    </div>
-  );
-};
-
 // ==================== COMPONENTE PRINCIPAL ====================
 export default function Dashboard() {
+  // Estado
   const [signals, setSignals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -160,8 +81,10 @@ export default function Dashboard() {
   const [priceHistory, setPriceHistory] = useState<any[]>([]);
   const [isMobile, setIsMobile] = useState(false);
   
+  // Refs para evitar re-renders innecesarios
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // ==================== DETECCIÓN DE MÓVIL ====================
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 600);
     checkMobile();
@@ -169,6 +92,7 @@ export default function Dashboard() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // ==================== FETCH SIGNALS (SIN DEPENDENCIAS) ====================
   const fetchSignals = useCallback(async () => {
     try {
       setLoading(true);
@@ -181,28 +105,22 @@ export default function Dashboard() {
       const data = await res.json();
 
       if (data?.success && Array.isArray(data.signals) && data.signals.length > 0) {
-
-        // ✅ CORRECCIÓN: Usar sentiment_zscore y momentum_zscore directamente
         const formatted = data.signals.map((item: any) => {
-          // Log para depurar cada item
-          console.log(`📊 ${item.ticker}: sentiment_zscore=${item.sentiment_zscore}, momentum_zscore=${item.momentum_zscore}`);
-          
+          const ndi = item.ndi || 0;
           return {
             ticker: item.ticker,
-            ndi: item.ndi || 0,
-            sentiment: item.sentiment_zscore ?? 0,
-            momentum: item.momentum_zscore ?? 0,
+            ndi,
+            sentiment: ndi * 0.6 + 0.2,
+            momentum: ndi * 0.4,
             price: item.current_price || 0,
             sector: sectorMap[item.ticker] || 'Other',
             confidence: item.confidence || 70,
-            regime: item.regime || 'No Data',
           };
         });
 
-        console.log('📊 Datos formateados:', formatted);
-
         setSignals(formatted);
         
+        // Solo setear ticker si no hay uno seleccionado
         if (formatted.length > 0 && !selectedTicker) {
           setSelectedTicker(formatted[0].ticker);
         }
@@ -219,6 +137,7 @@ export default function Dashboard() {
     }
   }, [selectedTicker]);
 
+  // ==================== SETUP SIGNALS (SOLO UNA VEZ) ====================
   useEffect(() => {
     fetchSignals();
 
@@ -236,6 +155,7 @@ export default function Dashboard() {
     };
   }, [fetchSignals]);
 
+  // ==================== FETCH PRICE HISTORY ====================
   useEffect(() => {
     const fetchPriceHistory = async () => {
       if (!selectedTicker) return;
@@ -255,6 +175,7 @@ export default function Dashboard() {
     fetchPriceHistory();
   }, [selectedTicker]);
 
+  // ==================== CÁLCULOS ====================
   const sectorAverages = signals.reduce((acc: any, s) => {
     if (!acc[s.sector]) acc[s.sector] = { total: 0, count: 0 };
     acc[s.sector].total += s.ndi;
@@ -285,6 +206,7 @@ export default function Dashboard() {
   const tickerList = signals.map(s => s.ticker);
   const ndiMap = Object.fromEntries(signals.map(s => [s.ticker, s.ndi]));
 
+  // ==================== RENDER ====================
   if (loading && signals.length === 0) {
     return (
       <div style={{
@@ -305,15 +227,17 @@ export default function Dashboard() {
   return (
     <div style={{ 
       padding: isMobile ? '10px 10px' : '20px 32px', 
-      maxWidth: 1200, 
+      maxWidth: 900, 
       margin: '0 auto',
       width: '100%',
       boxSizing: 'border-box',
-      backgroundColor: C.bg,
-      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
     }}>
+      {/* HEADER */}
       <div style={{ 
-        marginBottom: 12, 
+        marginBottom: 8, 
         textAlign: 'center',
         width: '100%',
       }}>
@@ -335,6 +259,7 @@ export default function Dashboard() {
         </p>
       </div>
 
+      {/* PRICE CHART */}
       <div style={{
         background: C.card,
         border: `1px solid ${C.cardBorder}`,
@@ -342,7 +267,7 @@ export default function Dashboard() {
         padding: isMobile ? 10 : 16,
         marginBottom: 12,
         width: '100%',
-        maxWidth: 1200,
+        maxWidth: 800,
       }}>
         <h3 style={{ 
           fontSize: isMobile ? 11 : 13, 
@@ -375,10 +300,9 @@ export default function Dashboard() {
                 domain={['auto', 'auto']} 
               />
               <Tooltip contentStyle={{ 
-                background: C.card, 
+                background: C.sidebar, 
                 border: `1px solid ${C.cardBorder}`, 
-                borderRadius: 8,
-                color: C.text,
+                borderRadius: 8 
               }} />
               <Area 
                 type="monotone" 
@@ -397,7 +321,8 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div style={{ width: '100%', maxWidth: 1200, marginBottom: 12 }}>
+      {/* TICKER SELECTOR */}
+      <div style={{ width: '100%', maxWidth: 800 }}>
         <TickerFocusStrip
           tickers={tickerList}
           selectedTicker={selectedTicker || ''}
@@ -406,6 +331,7 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* ERROR */}
       {error && (
         <div style={{ 
           background: C.redBg, 
@@ -413,62 +339,50 @@ export default function Dashboard() {
           padding: 8, 
           marginTop: 8, 
           width: '100%', 
-          maxWidth: 1200 
+          maxWidth: 800 
         }}>
           <p style={{ fontSize: 11, color: C.red, margin: 0 }}>{error}</p>
         </div>
       )}
 
-      <div style={{
-        display: 'flex',
-        flexDirection: isMobile ? 'column' : 'row',
-        gap: '20px',
-        marginBottom: '16px',
-        alignItems: 'flex-start',
+      {/* GAUGE */}
+      <div style={{ 
+        marginTop: 10,
+        marginBottom: 6,
+        display: 'flex', 
+        justifyContent: 'center',
+        alignItems: 'center',
         width: '100%',
-        maxWidth: 1200,
+        maxWidth: 800,
       }}>
-        <div style={{
-          flex: '0 0 auto',
-          width: isMobile ? '100%' : '320px',
-        }}>
-          <NDIGauge 
-            ndi={analysis.ndi} 
-            size={isMobile ? 220 : 260} 
-          />
-        </div>
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-          minWidth: 0,
-          width: '100%',
-        }}>
-          <NDIFrameworkTable 
-            ndi={analysis.ndi} 
-            regime={analysis.regime} 
-          />
-          <NarrativePanel
-            ticker={signal.ticker}
-            ndi={analysis.ndi}
-            regime={analysis.regime}
-            sentiment={signal.sentiment}
-            momentum={signal.momentum}
-            price={signal.price}
-            explanation={analysis.explanation}
-          />
-        </div>
+        <NDIVelocimeter 
+          ndi={analysis.ndi} 
+          size={isMobile ? 280 : 380} 
+        />
       </div>
 
+      {/* NARRATIVE */}
+      <div style={{ width: '100%', maxWidth: 800 }}>
+        <NarrativePanel
+          ticker={signal.ticker}
+          ndi={analysis.ndi}
+          regime={analysis.regime}
+          sentiment={signal.sentiment}
+          momentum={signal.momentum}
+          price={signal.price}
+          explanation={analysis.explanation}
+        />
+      </div>
+
+      {/* SECTOR PERFORMANCE */}
       <div style={{
         background: C.card,
         border: `1px solid ${C.cardBorder}`,
         borderRadius: 12,
         padding: isMobile ? 12 : 16,
-        marginTop: 8,
+        marginTop: 12,
         width: '100%',
-        maxWidth: 1200,
+        maxWidth: 800,
       }}>
         <h3 style={{ 
           fontSize: isMobile ? 11 : 13, 
@@ -479,32 +393,48 @@ export default function Dashboard() {
           📊 Sector Performance (Avg NDI)
         </h3>
         {sectorPerformance.length > 0 ? (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-            {sectorPerformance.map((s) => (
-              <div
-                key={s.sector}
-                style={{
-                  flex: '1',
-                  minWidth: '100px',
-                  padding: '10px 14px',
-                  background: C.accentBg,
-                  borderRadius: 8,
-                  textAlign: 'center',
-                }}
-              >
-                <div style={{ color: C.muted, fontSize: isMobile ? 9 : 11 }}>
-                  {s.sector}
-                </div>
-                <div style={{ 
-                  color: s.color, 
-                  fontSize: isMobile ? 16 : 20, 
-                  fontWeight: 'bold' 
-                }}>
-                  {s.avgNDI.toFixed(2)}
-                </div>
+          sectorPerformance.map((s) => (
+            <div
+              key={s.sector}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: isMobile ? 6 : 10,
+                marginBottom: isMobile ? 3 : 5,
+              }}
+            >
+              <span style={{ 
+                width: isMobile ? 65 : 90, 
+                fontSize: isMobile ? 9 : 11, 
+                color: C.muted 
+              }}>
+                {s.sector}
+              </span>
+              <div style={{
+                flex: 1,
+                height: isMobile ? 4 : 6,
+                background: C.bg,
+                borderRadius: 4,
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  width: `${Math.min((s.avgNDI + 1) / 2.5 * 100, 100)}%`,
+                  height: '100%',
+                  background: s.color,
+                  borderRadius: 4,
+                  transition: 'width 0.6s ease',
+                }} />
               </div>
-            ))}
-          </div>
+              <span style={{ 
+                width: 30, 
+                fontSize: isMobile ? 9 : 11, 
+                color: C.text, 
+                textAlign: 'right' 
+              }}>
+                {s.avgNDI.toFixed(2)}
+              </span>
+            </div>
+          ))
         ) : (
           <div style={{ textAlign: 'center', color: C.muted, padding: 8 }}>
             No sector data available

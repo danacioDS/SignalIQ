@@ -1,95 +1,149 @@
 import { useMemo } from 'react';
-import { getRegimeFromNDI, getRegimeLabel, getRegimeColor, getRegimeIcon } from '../utils/velocimeterUtils';
 
-interface SignalInput {
+interface SignalData {
   ticker: string;
   ndi: number;
   sentiment: number;
   momentum: number;
   price: number;
-  sector?: string;
-  confidence?: number;
+  sector: string;
+  confidence: number;
 }
 
-export const useSignalAnalysis = (input: SignalInput) => {
-  return useMemo(() => {
-    const regime = getRegimeFromNDI(input.ndi);
-    const label = getRegimeLabel(regime);
-    const color = getRegimeColor(regime);
-    const icon = getRegimeIcon(regime);
+interface RegimeAnalysis {
+  regime: string;
+  regimeKey: string;
+  ndi: number;
+  color: string;
+  icon: string;
+  explanation: {
+    paragraph1: string;
+    paragraph2: string;
+    marketInsight: string;
+    riskContext: string;
+  };
+}
 
-    // Get regime-specific analysis
-    const getRegimeAnalysis = (regime: string) => {
-      const analyses: Record<string, { p1: string; p2: string; insight: string; risk: string }> = {
-        'EXTREME_OVERHEATING': {
-          p1: `${input.ticker} is in an EXTREME OVERHEATING regime, indicating extreme bullish sentiment disconnected from momentum. This represents a high-risk speculative phase where price has significantly outpaced fundamentals.`,
-          p2: `Historical patterns suggest that extreme overheating regimes often precede sharp corrections. The divergence between sentiment (${input.sentiment.toFixed(3)}) and momentum (${input.momentum.toFixed(2)}%) is at critical levels.`,
-          insight: `NDI at ${input.ndi.toFixed(3)} reflects extreme structural divergence. Market is in late-stage euphoria with elevated risk of reversal.`,
-          risk: `Very High Risk - this regime typically precedes significant corrections or trend reversals.`,
-        },
-        'OVERHEATING': {
-          p1: `${input.ticker} is in an OVERHEATING regime, suggesting strong bullish sentiment is outpacing momentum. This indicates the market may be overextended in the short term.`,
-          p2: `This configuration often appears in late-stage rallies where price momentum is starting to slow. Sentiment (${input.sentiment.toFixed(3)}) remains elevated while momentum (${input.momentum.toFixed(2)}%) shows signs of weakening.`,
-          insight: `NDI at ${input.ndi.toFixed(3)} indicates a structural divergence where sentiment is exceeding momentum. Watch for potential consolidation or reversal.`,
-          risk: `High Risk - this regime often precedes pullbacks or trend exhaustion.`,
-        },
-        'WATCHING': {
-          p1: `${input.ticker} is in a WATCHING regime, indicating a moderate divergence between market sentiment and price momentum. This suggests the market is in a transitional phase.`,
-          p2: `This type of configuration typically appears during market transition phases where price has not yet fully validated the optimism of sentiment. The divergence between sentiment (${input.sentiment.toFixed(3)}) and momentum (${input.momentum.toFixed(2)}%) requires close monitoring.`,
-          insight: `NDI at ${input.ndi.toFixed(3)} reflects a structural divergence between sentiment and momentum. The market is in a phase of directional uncertainty.`,
-          risk: `Medium Risk - this regime often precedes either continuation or reversal movements.`,
-        },
-        'STABLE': {
-          p1: `${input.ticker} is in a STABLE regime, indicating balanced conditions between sentiment and price momentum. This suggests the market is in equilibrium.`,
-          p2: `This configuration typically appears when the market is consolidating. Sentiment (${input.sentiment.toFixed(3)}) and momentum (${input.momentum.toFixed(2)}%) are aligned, suggesting low volatility ahead.`,
-          insight: `NDI at ${input.ndi.toFixed(3)} indicates balanced conditions. No immediate directional bias.`,
-          risk: `Very Low Risk - this regime typically precedes low volatility periods.`,
-        },
-        'ALIGNED': {
-          p1: `${input.ticker} is in an ALIGNED regime, indicating slightly negative sentiment is being offset by positive momentum. This often represents accumulation phases.`,
-          p2: `This type of configuration suggests institutional accumulation may be occurring. Sentiment (${input.sentiment.toFixed(3)}) is slightly weak while momentum (${input.momentum.toFixed(2)}%) remains positive.`,
-          insight: `NDI at ${input.ndi.toFixed(3)} suggests a divergence where momentum is stronger than sentiment.`,
-          risk: `Low Risk - this regime typically precedes accumulation and trend formation.`,
-        },
-        'STRONG_UNDERVALUED': {
-          p1: `${input.ticker} is in a STRONG UNDERVALUED regime, indicating negative sentiment is not justified by price momentum. This suggests potential oversold conditions.`,
-          p2: `This configuration often appears during accumulation phases where sentiment (${input.sentiment.toFixed(3)}) is overly pessimistic while momentum (${input.momentum.toFixed(2)}%) remains resilient.`,
-          insight: `NDI at ${input.ndi.toFixed(3)} indicates a structural divergence where momentum is stronger than sentiment.`,
-          risk: `Medium-High Risk - this regime typically precedes reversals to the upside.`,
-        },
-        'EXTREME_UNDERVALUED': {
-          p1: `${input.ticker} is in an EXTREME UNDERVALUED regime, indicating capitulation levels where sentiment is extremely negative while momentum shows signs of stabilization.`,
-          p2: `This represents a phase of capitulation where price has become disconnected from sentiment. Sentiment (${input.sentiment.toFixed(3)}) is at extreme lows while momentum (${input.momentum.toFixed(2)}%) suggests potential stabilization.`,
-          insight: `NDI at ${input.ndi.toFixed(3)} reflects extreme structural divergence - potential accumulation zone.`,
-          risk: `High Risk - this regime typically precedes sharp reversals or trend changes.`,
+const getRegimeFromNDI = (ndi: number): { key: string; label: string; color: string; icon: string } => {
+  if (ndi > 2.0) return { key: 'EXTREME_OVERHEATING', label: 'Extreme Overheating', color: '#ef4444', icon: '🔴' };
+  if (ndi > 1.5) return { key: 'OVERHEATING', label: 'Overheating', color: '#f97316', icon: '🟠' };
+  if (ndi > 0.5) return { key: 'WATCHING', label: 'Watching', color: '#eab308', icon: '🟡' };
+  if (ndi > -0.5) return { key: 'STABLE', label: 'Stable', color: '#22c55e', icon: '🟢' };
+  if (ndi > -1.5) return { key: 'ALIGNED', label: 'Aligned', color: '#22c55e', icon: '🟢' };
+  if (ndi > -2.0) return { key: 'STRONG_UNDERVALUED', label: 'Strong Undervalued', color: '#3b82f6', icon: '🔵' };
+  return { key: 'EXTREME_UNDERVALUED', label: 'Extreme Undervalued', color: '#1d4ed8', icon: '🔵' };
+};
+
+export const useSignalAnalysis = (signal: SignalData | null | undefined): RegimeAnalysis => {
+  return useMemo(() => {
+    console.log('📊 useSignalAnalysis - input:', signal);
+
+    if (!signal || typeof signal.ndi !== 'number' || isNaN(signal.ndi)) {
+      return {
+        regime: 'No Data',
+        regimeKey: 'NO_DATA',
+        ndi: 0,
+        color: '#6b7280',
+        icon: '⏳',
+        explanation: {
+          paragraph1: 'No market data available for this ticker.',
+          paragraph2: 'Please check your connection or try again later.',
+          marketInsight: 'Data not available',
+          riskContext: 'Unknown risk level',
         },
       };
-      return analyses[regime] || analyses['STABLE'];
-    };
+    }
 
-    const analysis = getRegimeAnalysis(regime);
+    const ndi = signal.ndi;
+    const sentiment = signal.sentiment ?? 0;
+    const momentum = signal.momentum ?? 0;
+    const price = signal.price ?? 0;
+    const ticker = signal.ticker ?? 'Unknown';
+
+    console.log(`📊 useSignalAnalysis - ${ticker}: ndi=${ndi}, sentiment=${sentiment}, momentum=${momentum}`);
+
+    const regimeInfo = getRegimeFromNDI(ndi);
+    
+    let confidence = 0;
+    const absNdi = Math.abs(ndi);
+    if (absNdi <= 0.8) {
+      confidence = 50 + (absNdi / 0.8) * 40;
+    } else if (absNdi <= 2.0) {
+      confidence = 90 - ((absNdi - 0.8) / 1.2) * 40;
+    } else {
+      confidence = 50;
+    }
+    confidence = Math.max(10, Math.min(95, confidence));
+
+    let paragraph1 = '';
+    let paragraph2 = '';
+    let marketInsight = '';
+    let riskContext = '';
+
+    switch (regimeInfo.key) {
+      case 'EXTREME_OVERHEATING':
+        paragraph1 = `${ticker} is in an EXTREME OVERHEATING regime. Market sentiment has completely detached from price action, indicating a highly speculative environment.`;
+        paragraph2 = `This configuration often precedes significant corrections. Consider reducing exposure or hedging positions.`;
+        marketInsight = `NDI at ${ndi.toFixed(3)} reflects extreme divergence. Price: $${price.toFixed(2)}.`;
+        riskContext = `High Risk - potential for sharp reversal. Confidence: ${confidence.toFixed(1)}%`;
+        break;
+      case 'OVERHEATING':
+        paragraph1 = `${ticker} is in an OVERHEATING regime. Market sentiment is running ahead of price action, suggesting potential overvaluation.`;
+        paragraph2 = `This type of configuration often appears during late-stage rallies. Price has not yet validated the optimism of sentiment.`;
+        marketInsight = `NDI at ${ndi.toFixed(3)} reflects significant divergence. Price: $${price.toFixed(2)}.`;
+        riskContext = `Medium-High Risk - caution advised. Confidence: ${confidence.toFixed(1)}%`;
+        break;
+      case 'WATCHING':
+        paragraph1 = `${ticker} is in a WATCHING regime, indicating a moderate divergence between market sentiment and price momentum. This suggests the market is in a transitional phase.`;
+        paragraph2 = `This type of configuration typically appears during market transition phases where price has not yet fully validated the optimism of sentiment. The divergence between sentiment (${sentiment.toFixed(3)}) and momentum (${momentum.toFixed(3)}) requires close monitoring.`;
+        marketInsight = `NDI at ${ndi.toFixed(3)} reflects a structural divergence between sentiment and momentum. The market is in a phase of directional uncertainty.`;
+        riskContext = `Medium Risk - this regime often precedes either continuation or reversal movements. Confidence: ${confidence.toFixed(1)}%`;
+        break;
+      case 'STABLE':
+        paragraph1 = `${ticker} is in a STABLE regime. Market sentiment and price action are in equilibrium, suggesting a balanced market environment.`;
+        paragraph2 = `This configuration typically appears during consolidation phases. Sentiment (${sentiment.toFixed(3)}) and momentum (${momentum.toFixed(3)}) are aligned.`;
+        marketInsight = `NDI at ${ndi.toFixed(3)} reflects equilibrium. Price: $${price.toFixed(2)}.`;
+        riskContext = `Low Risk - stable environment. Confidence: ${confidence.toFixed(1)}%`;
+        break;
+      case 'ALIGNED':
+        paragraph1 = `${ticker} is in an ALIGNED regime. Price action is slightly outpacing sentiment, suggesting a potential accumulation opportunity.`;
+        paragraph2 = `This configuration can indicate that the market is undervaluing the underlying fundamentals. Sentiment (${sentiment.toFixed(3)}) is lagging behind momentum (${momentum.toFixed(3)}).`;
+        marketInsight = `NDI at ${ndi.toFixed(3)} reflects slight undervaluation. Price: $${price.toFixed(2)}.`;
+        riskContext = `Low-Medium Risk - accumulation phase. Confidence: ${confidence.toFixed(1)}%`;
+        break;
+      case 'STRONG_UNDERVALUED':
+        paragraph1 = `${ticker} is in a STRONG UNDERVALUED regime. Price action is significantly outpacing sentiment, suggesting a strong accumulation opportunity.`;
+        paragraph2 = `This configuration often appears at market bottoms or after significant sell-offs. Sentiment (${sentiment.toFixed(3)}) is far behind momentum (${momentum.toFixed(3)}).`;
+        marketInsight = `NDI at ${ndi.toFixed(3)} reflects strong undervaluation. Price: $${price.toFixed(2)}.`;
+        riskContext = `Medium Risk - high reward potential. Confidence: ${confidence.toFixed(1)}%`;
+        break;
+      case 'EXTREME_UNDERVALUED':
+        paragraph1 = `${ticker} is in an EXTREME UNDERVALUED regime. Market sentiment is extremely pessimistic while price action shows strength. This is a classic accumulation signal.`;
+        paragraph2 = `This configuration is rare and often marks significant buying opportunities. The divergence between sentiment (${sentiment.toFixed(3)}) and momentum (${momentum.toFixed(3)}) is extreme.`;
+        marketInsight = `NDI at ${ndi.toFixed(3)} reflects extreme undervaluation. Price: $${price.toFixed(2)}.`;
+        riskContext = `High Risk - but highest potential reward. Confidence: ${confidence.toFixed(1)}%`;
+        break;
+      default:
+        paragraph1 = `${ticker} is in a neutral regime. Market sentiment and price action are relatively aligned.`;
+        paragraph2 = `No strong divergence detected. Sentiment (${sentiment.toFixed(3)}) and momentum (${momentum.toFixed(3)}) are in balance.`;
+        marketInsight = `NDI at ${ndi.toFixed(3)}. Price: $${price.toFixed(2)}.`;
+        riskContext = `Low Risk. Confidence: ${confidence.toFixed(1)}%`;
+    }
 
     return {
-      ndi: input.ndi,
-      regime,
-      regimeLabel: label,
-      regimeColor: color,
-      regimeIcon: icon,
-      decision: {
-        action: 'MONITOR',
-        priority: 'MEDIUM',
-        risk: 'MEDIUM',
-        confidence: input.confidence || 70,
-      },
+      regime: regimeInfo.label,
+      regimeKey: regimeInfo.key,
+      ndi: ndi,
+      color: regimeInfo.color,
+      icon: regimeInfo.icon,
       explanation: {
-        paragraph1: analysis.p1,
-        paragraph2: analysis.p2,
-        marketInsight: analysis.insight,
-        riskContext: analysis.risk,
+        paragraph1,
+        paragraph2,
+        marketInsight,
+        riskContext,
       },
-      raw: input,
     };
-  }, [input]);
+  }, [signal]);
 };
 
 export default useSignalAnalysis;

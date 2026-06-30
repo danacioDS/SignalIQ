@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { C } from '../components/styles';
-import { NDIGauge } from '../components/NDIGauge';
+import { NDIVelocimeter } from '../components/NDIVelocimeter';
 import { TickerFocusStrip } from '../components/TickerFocusStrip';
 import NarrativePanel from '../components/NarrativePanel';
 import {
@@ -182,24 +182,16 @@ export default function Dashboard() {
 
       if (data?.success && Array.isArray(data.signals) && data.signals.length > 0) {
 
-        // ✅ CORRECCIÓN: Usar sentiment_zscore y momentum_zscore directamente
-        const formatted = data.signals.map((item: any) => {
-          // Log para depurar cada item
-          console.log(`📊 ${item.ticker}: sentiment_zscore=${item.sentiment_zscore}, momentum_zscore=${item.momentum_zscore}`);
-          
-          return {
-            ticker: item.ticker,
-            ndi: item.ndi || 0,
-            sentiment: item.sentiment_zscore ?? 0,
-            momentum: item.momentum_zscore ?? 0,
-            price: item.current_price || 0,
-            sector: sectorMap[item.ticker] || 'Other',
-            confidence: item.confidence || 70,
-            regime: item.regime || 'No Data',
-          };
-        });
-
-        console.log('📊 Datos formateados:', formatted);
+        const formatted = data.signals.map((item: any) => ({
+          ticker: item.ticker,
+          ndi: item.ndi || 0,
+          sentiment: item.sentiment_zscore || item.sentiment || 0,  // ✅ CORRECTO
+          momentum: item.momentum_zscore || item.momentum || 0,     // ✅ CORRECTO
+          price: item.current_price || 0,
+          sector: sectorMap[item.ticker] || 'Other',
+          confidence: item.confidence || 70,
+          regime: item.regime || 'No Data',
+        }));
 
         setSignals(formatted);
         
@@ -432,11 +424,12 @@ export default function Dashboard() {
           flex: '0 0 auto',
           width: isMobile ? '100%' : '320px',
         }}>
-          <NDIGauge 
+          <NDIVelocimeter 
             ndi={analysis.ndi} 
             size={isMobile ? 220 : 260} 
           />
         </div>
+
         <div style={{
           flex: 1,
           display: 'flex',

@@ -1,10 +1,4 @@
-/**
- * NDIVelocimeter.tsx
- * Velocímetro semicircular con panel lateral NDI Framework
- * Armonizado con 7 Regímenes: Extreme Overheating, Overheating, Watching, Stable/Aligned, Accumulation, Strong Undervalued, Extreme Undervalued
- */
-
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { C } from './styles';
 import {
   getNeedleAngle,
@@ -15,381 +9,227 @@ import {
 } from '../utils/velocimeterUtils';
 
 interface NDIVelocimeterProps {
-  ndi: number;
+  ndi: number | null | undefined;
   size?: number;
-  className?: string;
 }
 
-export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({
-  ndi,
-  size = 460,
-  className,
-}) => {
-  const needleRef = useRef<SVGGElement>(null);
+export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({ ndi = 0, size = 300 }) => {
+  // Asegurar que ndi es un número
+  const safeNdi = typeof ndi === 'number' && !isNaN(ndi) ? ndi : 0;
   
-  // Obtener el régimen REAL usando la función correcta
-  const regime = getRegimeFromNDI(ndi);
+  const regime = getRegimeFromNDI(safeNdi);
   const label = getRegimeLabel(regime);
   const color = getRegimeColor(regime);
   const icon = getRegimeIcon(regime);
-  const angle = getNeedleAngle(ndi);
+  const angle = getNeedleAngle(safeNdi);
 
   const centerX = size / 2;
-  const centerY = size / 2 + size * 0.06;
-  const radius = size * 0.36;
-  const needleLength = radius * 0.82;
+  const centerY = size / 2;
+  const radius = size * 0.38;
+  const strokeWidth = size * 0.08;
 
-  const needleX = centerX + needleLength * Math.sin((angle * Math.PI) / 180);
-  const needleY = centerY - needleLength * Math.cos((angle * Math.PI) / 180);
+  // Calcular posición del extremo de la aguja
+  const needleLength = radius * 0.85;
+  const rad = (angle - 90) * (Math.PI / 180);
+  const needleX = centerX + needleLength * Math.cos(rad);
+  const needleY = centerY + needleLength * Math.sin(rad);
 
-  useEffect(() => {
-    if (needleRef.current) {
-      needleRef.current.style.transition = 'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)';
-    }
-  }, [ndi]);
-
-  const scaleMarks = [
-    { value: -2.0, label: '-2.0' },
-    { value: -1.5, label: '-1.5' },
-    { value: -1.0, label: '-1.0' },
-    { value: -0.5, label: '-0.5' },
-    { value: 0.0, label: '0.0' },
-    { value: 0.5, label: '0.5' },
-    { value: 1.0, label: '1.0' },
-    { value: 1.5, label: '1.5' },
-    { value: 2.0, label: '2.0' },
+  // Colores del arco (degradado de 7 colores)
+  
+  const arcColors = [
+    { stop: 0, color: '#1a237e' },    // -3.0: Extreme Undervalued
+    { stop: 0.17, color: '#1565c0' }, // -2.0: Strong Undervalued
+    { stop: 0.33, color: '#42a5f5' }, // -1.5: Aligned
+    { stop: 0.50, color: '#66bb6a' }, // -0.5: Stable
+    { stop: 0.67, color: '#ffee58' }, // 0.5: Watching
+    { stop: 0.83, color: '#ff9800' }, // 1.5: Overheating
+    { stop: 1.0, color: '#d32f2f' },  // 2.0: Extreme Overheating
   ];
 
-// ============================================================
-// 7 REGÍMENES OFICIALES (armonizados con la tabla económica)
-// ============================================================
-const regimeLevels = [
-  { 
-    value: 2.0, 
-    label: 'Extreme Overheating', 
-    color: '#ef4444', 
-    icon: '🔴', 
-    key: 'EXTREME_OVERHEATING',
-    action: 'SELL',
-    description: 'Euphoric market, price not rising'
-  },
-  { 
-    value: 1.5, 
-    label: 'Overheating', 
-    color: '#f97316', 
-    icon: '🟠', 
-    key: 'OVERHEATING',
-    action: 'REDUCE',
-    description: 'Strong optimism, momentum weakening'
-  },
-  { 
-    value: 0.5, 
-    label: 'Watching', 
-    color: '#eab308', 
-    icon: '🟡', 
-    key: 'WATCHING',
-    action: 'MONITOR',
-    description: 'Moderate divergence'
-  },
-  { 
-    value: 0.0, 
-    label: 'Stable / Aligned', 
-    color: '#22c55e', 
-    icon: '🟢', 
-    key: 'STABLE_ALIGNED',
-    action: 'HOLD',
-    description: 'Perfect equilibrium'
-  },
-  { 
-    value: -0.5, 
-    label: 'Accumulation', 
-    color: '#3b82f6', 
-    icon: '🔵', 
-    key: 'ACCUMULATION',
-    action: 'BUY',
-    description: 'Unjustified pessimism'
-  },
-  { 
-    value: -1.5, 
-    label: 'Strong Undervalued', 
-    color: '#1d4ed8', 
-    icon: '🔵', 
-    key: 'STRONG_UNDERVALUED',
-    action: 'STRONG BUY',
-    description: 'Significant oversold'
-  },
-  { 
-    value: -2.0, 
-    label: 'Extreme Undervalued', 
-    color: '#0f172a', 
-    icon: '🔵', 
-    key: 'EXTREME_UNDERVALUED',
-    action: 'ACCUMULATE',
-    description: 'Capitulation'
-  },
-];
-
-  // Encontrar el régimen actual
-  const currentRegimeIndex = regimeLevels.findIndex(r => r.key === regime);
+  // Mapear NDI a posición en el arco (de -3 a +3)
+  const ndiPos = Math.max(0, Math.min(1, (safeNdi + 5) / 6));
 
   return (
-    <div className={className} style={{ display: 'flex', gap: 32, alignItems: 'stretch', justifyContent: 'center' }}>
-      
-      {/* ===== VELOCÍMETRO ===== */}
-      <div style={{ flex: '0 0 auto', textAlign: 'center' }}>
-        <svg
-          width={size}
-          height={size * 0.58}
-          viewBox={`0 0 ${size} ${size * 0.58}`}
-          style={{ overflow: 'visible' }}
-        >
-          <defs>
-            <linearGradient id="ndiArcGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#1d4ed8" stopOpacity="1" />
-              <stop offset="14%" stopColor="#3b82f6" stopOpacity="1" />
-              <stop offset="28%" stopColor="#22c55e" stopOpacity="1" />
-              <stop offset="50%" stopColor="#22c55e" stopOpacity="1" />
-              <stop offset="64%" stopColor="#eab308" stopOpacity="1" />
-              <stop offset="78%" stopColor="#f97316" stopOpacity="1" />
-              <stop offset="100%" stopColor="#ef4444" stopOpacity="1" />
-            </linearGradient>
-            <filter id="needleShadow" x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="0" dy="2" stdDeviation="4" floodOpacity="0.3" />
-            </filter>
-          </defs>
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center',
+      backgroundColor: C.card,
+      borderRadius: '20px',
+      padding: '24px 20px 20px 20px',
+      border: `1px solid ${C.cardBorder}`,
+      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+    }}>
+      <svg width={size} height={size * 0.85} viewBox={`0 0 ${size} ${size * 0.85}`}>
+        {/* Fondo del arco */}
 
-          <path
-            d={`
-              M ${centerX - radius * 0.90} ${centerY}
-              A ${radius * 0.90} ${radius * 0.90} 0 0 1 ${centerX + radius * 0.90} ${centerY}
-            `}
-            fill="none"
-            stroke="url(#ndiArcGradient)"
-            strokeWidth={size * 0.05}
+        <circle
+          cx={centerX}
+          cy={centerY}
+          r={radius}
+          fill="none"
+          stroke="url(#arcGradient)"
+          strokeWidth={strokeWidth}
+          strokeDasharray={`${ndiPos * 2 * Math.PI * radius} ${(1 - ndiPos) * 2 * Math.PI * radius}`}
+          strokeDashoffset={0}
+          transform={`rotate(-90 ${centerX} ${centerY})`}
+          strokeLinecap="round"
+          opacity={0.95}
+        />
+
+        {/* Degradado del arco */}
+        <defs>
+          <linearGradient id="arcGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            {arcColors.map(({ stop, color }) => (
+              <stop key={stop} offset={`${stop * 100}%`} stopColor={color} />
+            ))}
+          </linearGradient>
+          
+          {/* Sombra para la aguja */}
+          <filter id="needleShadow">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.5"/>
+          </filter>
+        </defs>
+
+        {/* Arco con degradado */}
+        <circle
+          cx={centerX}
+          cy={centerY}
+          r={radius}
+          fill="none"
+          stroke="url(#arcGradient)"
+          strokeWidth={strokeWidth}
+          strokeDasharray={`${ndiPos * 2 * Math.PI * radius} ${(1 - ndiPos) * 2 * Math.PI * radius}`}
+          strokeDashoffset={0}
+          transform={`rotate(-90 ${centerX} ${centerY})`}
+          strokeLinecap="round"
+          opacity={0.95}
+        />
+
+        {/* Aguja con sombra */}
+        <g filter="url(#needleShadow)">
+          <line
+            x1={centerX}
+            y1={centerY}
+            x2={needleX}
+            y2={needleY}
+            stroke={C.text}
+            strokeWidth="3.5"
             strokeLinecap="round"
-            opacity={0.85}
           />
+        </g>
 
-          {scaleMarks.map(({ value }) => {
-            const angle = getNeedleAngle(value);
-            const innerRadius = radius * 0.72;
-            const outerRadius = radius * 0.80;
-            const x1 = centerX + innerRadius * Math.sin((angle * Math.PI) / 180);
-            const y1 = centerY - innerRadius * Math.cos((angle * Math.PI) / 180);
-            const x2 = centerX + outerRadius * Math.sin((angle * Math.PI) / 180);
-            const y2 = centerY - outerRadius * Math.cos((angle * Math.PI) / 180);
-            const isActive = Math.abs(value - ndi) < 0.05;
+        {/* Círculo central */}
+        <circle cx={centerX} cy={centerY} r="10" fill={C.text} opacity="0.9" />
+        <circle cx={centerX} cy={centerY} r="5" fill={C.bg} />
 
-            return (
-              <line
-                key={value}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-                stroke="#ffffff"
-                strokeWidth={isActive ? size * 0.018 : size * 0.008}
-                strokeLinecap="round"
-                opacity={isActive ? 1 : 0.3}
-              />
-            );
-          })}
+        {/* Líneas de referencia */}
+        <line
+          x1={centerX - radius * 0.95}
+          y1={centerY + radius * 0.05}
+          x2={centerX - radius * 1.05}
+          y2={centerY + radius * 0.05}
+          stroke={C.muted}
+          strokeWidth="2"
+          opacity="0.3"
+        />
+        <line
+          x1={centerX + radius * 0.95}
+          y1={centerY + radius * 0.05}
+          x2={centerX + radius * 1.05}
+          y2={centerY + radius * 0.05}
+          stroke={C.muted}
+          strokeWidth="2"
+          opacity="0.3"
+        />
+        <line
+          x1={centerX}
+          y1={centerY - radius * 0.95}
+          x2={centerX}
+          y2={centerY - radius * 1.05}
+          stroke={C.muted}
+          strokeWidth="2"
+          opacity="0.3"
+        />
 
-          {scaleMarks.map(({ value, label }) => {
-            const angle = getNeedleAngle(value);
-            const textRadius = radius * 0.60;
-            const x = centerX + textRadius * Math.sin((angle * Math.PI) / 180);
-            const y = centerY - textRadius * Math.cos((angle * Math.PI) / 180);
-            const isActive = Math.abs(value - ndi) < 0.05;
+        {/* Etiqueta: Overheating (arriba izquierda) */}
+        <text
+          x={centerX - radius * 0.55}
+          y={centerY - radius * 0.35}
+          textAnchor="middle"
+          fill={C.muted}
+          fontSize={size * 0.045}
+          fontWeight="bold"
+          opacity="0.7"
+        >
+          🔥 Overheating
+        </text>
 
-            return (
-              <text
-                key={value}
-                x={x}
-                y={y + size * 0.025}
-                textAnchor="middle"
-                fontSize={size * 0.032}
-                fill="#ffffff"
-                fontWeight={isActive ? 'bold' : 'normal'}
-                opacity={isActive ? 1 : 0.5}
-              >
-                {label}
-              </text>
-            );
-          })}
+        {/* Etiqueta: Accumulation (abajo derecha) */}
+        <text
+          x={centerX + radius * 0.55}
+          y={centerY + radius * 0.55}
+          textAnchor="middle"
+          fill={C.muted}
+          fontSize={size * 0.045}
+          fontWeight="bold"
+          opacity="0.7"
+        >
+          💎 Accumulation
+        </text>
 
-          <g
-            ref={needleRef}
-            style={{
-              transformOrigin: `${centerX}px ${centerY}px`,
-              transform: `rotate(${angle}deg)`,
-            }}
-          >
-            <line
-              x1={centerX - size * 0.04}
-              y1={centerY}
-              x2={needleX}
-              y2={needleY}
-              stroke="#ffffff"
-              strokeWidth={size * 0.018}
-              strokeLinecap="round"
-              filter="url(#needleShadow)"
-            />
-            <circle
-              cx={centerX}
-              cy={centerY}
-              r={size * 0.035}
-              fill="#ffffff"
-              stroke={color}
-              strokeWidth={size * 0.012}
-              filter="url(#needleShadow)"
-            />
-            <circle
-              cx={centerX}
-              cy={centerY}
-              r={size * 0.015}
-              fill={color}
-              opacity={0.6}
-            />
-          </g>
+        {/* Valor NDI en el centro */}
+        <text
+          x={centerX}
+          y={centerY + radius * 0.25}
+          textAnchor="middle"
+          fill={color}
+          fontSize={size * 0.09}
+          fontWeight="bold"
+        >
+          {safeNdi.toFixed(3)}
+        </text>
+        <text
+          x={centerX}
+          y={centerY + radius * 0.38}
+          textAnchor="middle"
+          fill={C.muted}
+          fontSize={size * 0.035}
+        >
+          NDI Value
+        </text>
+      </svg>
 
-          <text
-            x={centerX}
-            y={centerY - size * 0.07}
-            textAnchor="middle"
-            fontSize={size * 0.075}
-            fontWeight="bold"
-            fill={color}
-            filter="drop-shadow(0 1px 4px rgba(0,0,0,0.2))"
-          >
-            {icon} {label}
-          </text>
-
-          <rect
-            x={centerX - size * 0.12}
-            y={centerY + size * 0.02}
-            width={size * 0.24}
-            height={size * 0.06}
-            rx={size * 0.015}
-            fill="rgba(0,0,0,0.85)"
-            stroke={color}
-            strokeWidth={size * 0.004}
-          />
-          <text
-            x={centerX}
-            y={centerY + size * 0.065}
-            textAnchor="middle"
-            fontSize={size * 0.045}
-            fontWeight="bold"
-            fill={color}
-          >
-            {ndi > 0 ? `+${ndi.toFixed(3)}` : ndi.toFixed(3)}
-          </text>
-
-          <text
-            x={centerX}
-            y={centerY + size * 0.12}
-            textAnchor="middle"
-            fontSize={size * 0.02}
-            fill={C.muted}
-            opacity={0.5}
-          >
-            NDI Value
-          </text>
-        </svg>
-      </div>
-
-      {/* ===== PANEL LATERAL: NDI FRAMEWORK ===== */}
-      <div style={{
-        width: 230,
-        padding: '16px 20px',
-        background: C.card,
-        borderRadius: 12,
+      {/* Panel inferior con régimen */}
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '14px', 
+        marginTop: '8px',
+        padding: '10px 20px',
+        backgroundColor: C.accentBg,
+        borderRadius: '12px',
         border: `1px solid ${C.cardBorder}`,
-        display: 'flex',
-        flexDirection: 'column',
+        width: '100%',
         justifyContent: 'center',
       }}>
-        <h4 style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: '0 0 4px 0' }}>
-          📊 NDI Framework
-        </h4>
-        <p style={{ fontSize: 10, color: C.muted, margin: '0 0 12px 0' }}>
-          NDI = Sentiment − Momentum
-        </p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {regimeLevels.map((level, index) => {
-            const isCurrent = index === currentRegimeIndex;
-            
-            return (
-              <div
-                key={level.value}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '3px 6px',
-                  borderRadius: 4,
-                  background: isCurrent ? `${level.color}25` : 'transparent',
-                  borderLeft: isCurrent ? `3px solid ${level.color}` : '3px solid transparent',
-                }}
-              >
-                <span style={{ fontSize: 12, color: level.color, width: 16 }}>{level.icon}</span>
-                <span style={{
-                  fontSize: 9,
-                  color: isCurrent ? level.color : C.muted,
-                  fontWeight: isCurrent ? 700 : 400,
-                  flex: 1,
-                }}>
-                  {level.label}
-                </span>
-                <span style={{
-                  fontSize: 8,
-                  color: isCurrent ? '#ffffff' : C.muted,
-                  fontWeight: isCurrent ? 700 : 400,
-                  width: 40,
-                  textAlign: 'right',
-                }}>
-                  {level.action}
-                </span>
-                <span style={{
-                  fontSize: 8,
-                  color: isCurrent ? level.color : C.muted,
-                  fontWeight: isCurrent ? 700 : 400,
-                  width: 22,
-                  textAlign: 'right',
-                }}>
-                  {level.value.toFixed(1)}
-                </span>
-                {isCurrent && (
-                  <span style={{ 
-                    fontSize: 12, 
-                    color: level.color,
-                    fontWeight: 'bold',
-                  }}>
-                    ←
-                  </span>
-                )}
-              </div>
-            );
-          })}
+        <span style={{ fontSize: '28px' }}>{icon}</span>
+        <div>
+          <div style={{ color: C.text, fontSize: '18px', fontWeight: 'bold' }}>
+            {label}
+          </div>
+          <div style={{ color: C.muted, fontSize: '13px' }}>
+            NDI: {safeNdi.toFixed(3)} • {regime.replace('_', ' ')}
+          </div>
         </div>
-
         <div style={{
-          marginTop: 10,
-          padding: '6px 12px',
-          background: `${color}25`,
-          borderRadius: 8,
-          border: `2px solid ${color}`,
-          textAlign: 'center',
-        }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: color }}>
-            {icon} {label}
-          </span>
-          <span style={{ fontSize: 11, color: C.text, marginLeft: 8 }}>
-            NDI: {ndi > 0 ? `+${ndi.toFixed(3)}` : ndi.toFixed(3)}
-          </span>
-        </div>
+          width: '16px',
+          height: '16px',
+          borderRadius: '50%',
+          backgroundColor: color,
+          marginLeft: 'auto',
+          boxShadow: `0 0 12px ${color}40`,
+        }} />
       </div>
     </div>
   );

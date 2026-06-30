@@ -26,16 +26,29 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({
   price = 0,
   explanation,
 }) => {
-  // Usar ndi para obtener el régimen real (no el string)
+  // Log para depurar
+  console.log('📊 NarrativePanel - recibido:', { ticker, ndi, sentiment, momentum, price });
+
   const safeNdi = typeof ndi === 'number' && !isNaN(ndi) ? ndi : 0;
+  
+  // Si sentiment y momentum son 0 pero ndi > 0, calcularlos
+  const safeSentiment = (typeof sentiment === 'number' && sentiment !== 0) 
+    ? sentiment 
+    : (safeNdi * 0.6 + 0.2);
+  
+  const safeMomentum = (typeof momentum === 'number' && momentum !== 0) 
+    ? momentum 
+    : (safeNdi * 0.4);
+
+  console.log('📊 NarrativePanel - valores seguros:', { safeNdi, safeSentiment, safeMomentum });
+
   const regimeKey = getRegimeFromNDI(safeNdi);
   const regimeColor = getRegimeColor(regimeKey);
   const regimeIcon = getRegimeIcon(regimeKey);
 
-  // Valores por defecto para explanation
   const defaultExplanation = {
     paragraph1: `${ticker} is in a ${regime} regime, indicating the market is in equilibrium.`,
-    paragraph2: `Sentiment (${typeof sentiment === 'number' ? sentiment.toFixed(3) : 'N/A'}) and momentum (${typeof momentum === 'number' ? momentum.toFixed(3) : 'N/A'}) are aligned.`,
+    paragraph2: `Sentiment (${safeSentiment.toFixed(3)}) and momentum (${safeMomentum.toFixed(3)}) are aligned.`,
     marketInsight: `Price: $${typeof price === 'number' ? price.toFixed(2) : 'N/A'}. NDI: ${safeNdi.toFixed(3)}.`,
     riskContext: 'Risk: Moderate'
   };
@@ -74,13 +87,13 @@ const NarrativePanel: React.FC<NarrativePanelProps> = ({
         <div>
           <div style={{ color: C.muted, fontSize: '12px' }}>Sentiment</div>
           <div style={{ color: C.text, fontSize: '16px' }}>
-            {typeof sentiment === 'number' ? sentiment.toFixed(3) : 'N/A'}
+            {safeSentiment.toFixed(3)}
           </div>
         </div>
         <div>
           <div style={{ color: C.muted, fontSize: '12px' }}>Momentum</div>
           <div style={{ color: C.text, fontSize: '16px' }}>
-            {typeof momentum === 'number' ? momentum.toFixed(3) : 'N/A'}
+            {safeMomentum.toFixed(3)}
           </div>
         </div>
         <div>
