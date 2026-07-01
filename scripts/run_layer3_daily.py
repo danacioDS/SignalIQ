@@ -5,15 +5,11 @@ import os
 import sys
 import psycopg2
 import psycopg2.extras
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from layers.layer3_momentum import MomentumProcessor
-from layers.layer3_sentiment import SentimentProcessor
-from layers.layer4_orchestrator import Layer4Orchestrator, process_asset
-from layers.layer4_persistence import PersistenceTracker
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if not DATABASE_URL:

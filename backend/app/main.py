@@ -9,18 +9,15 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 import json
 import logging
 import re as _re
-import time
-import yfinance as yf
 import google.generativeai as genai
-import requests
 import numpy as np
 
-from app.db import init_pool, close_pool, execute_query, execute_query_one, get_connection, put_connection
+from app.db import init_pool, close_pool, execute_query_one, get_connection, put_connection
 from app.llm_service import llm_service
 import psycopg2.extras
 
@@ -35,7 +32,7 @@ USE_JSON_LOGS = os.environ.get('USE_JSON_LOGS', 'true').lower() == 'true'
 class JSONFormatter(logging.Formatter):
     def format(self, record):
         return json.dumps({
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(datetime.UTC).isoformat(),
             'level': record.levelname,
             'name': record.name,
             'message': record.getMessage(),
@@ -854,8 +851,8 @@ if __name__ == "__main__":
     print("=" * 60)
     print(f"📍 Port: {port}")
     print(f"📁 Static dir: {static_dir}")
-    print(f"🔧 Mode: REAL")
-    print(f"📊 Fuente principal: yfinance")
+    print("🔧 Mode: REAL")
+    print("📊 Fuente principal: yfinance")
     print(f"📋 API Routes: {len([r for r in app.url_map.iter_rules() if r.rule.startswith('/api')])}")
     print("=" * 60 + "\n")
 

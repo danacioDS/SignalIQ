@@ -95,7 +95,7 @@ class LLMRouter:
                     response = model.generate_content(prompt)
                     if response and response.text:
                         return response.text.strip()
-                except:
+                except Exception:
                     continue
             return ""
         

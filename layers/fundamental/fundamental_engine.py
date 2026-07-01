@@ -2,7 +2,6 @@
 
 from typing import Dict, Optional, Any
 from datetime import datetime
-import numpy as np
 
 from .metrics_calculator import FundamentalMetrics, MetricsCalculator
 from .score_aggregator import FundamentalScoreAggregator

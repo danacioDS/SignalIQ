@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import re
 
 # Leer el archivo original
 with open('app/main.py', 'r') as f:

@@ -8,7 +8,6 @@ import urllib.parse
 from typing import Optional
 
 import feedparser
-import requests
 
 from ingestion.http_client import fetch_with_retry
 

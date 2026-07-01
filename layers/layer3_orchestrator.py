@@ -1,6 +1,5 @@
 """Layer 3 orchestrator — coordinates entity resolution, sentiment, and momentum."""
 
-import re
 from collections import defaultdict
 from datetime import date, datetime
 

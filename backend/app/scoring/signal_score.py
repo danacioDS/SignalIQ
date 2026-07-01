@@ -137,8 +137,8 @@ class SignalIQScore:
         total_score = sum(components[k] * self.weights[k] for k in components)
         
         if total_score >= 70:
-            return f"**SIGNAL**\n\nKey factors:\n" + "\n".join(reasons[:4])
+            return "**SIGNAL**\n\nKey factors:\n" + "\n".join(reasons[:4])
         elif total_score >= 45:
-            return f"**WATCH**\n\nNotable factors:\n" + "\n".join(reasons[:3])
+            return "**WATCH**\n\nNotable factors:\n" + "\n".join(reasons[:3])
         else:
-            return f"**LOW PRIORITY**\n\nLimited impact:\n" + "\n".join(reasons[:2])
+            return "**LOW PRIORITY**\n\nLimited impact:\n" + "\n".join(reasons[:2])

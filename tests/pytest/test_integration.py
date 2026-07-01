@@ -5,7 +5,6 @@ Validates that the system can boot and respond to requests.
 
 import pytest
 import requests
-import os
 
 @pytest.mark.integration
 def test_full_system_boot():

@@ -1,7 +1,7 @@
 """
 Clasificador de eventos - Base para todo el scoring
 """
-from typing import Dict, List
+from typing import Dict
 
 class EventClassifier:
     EVENT_TYPES = {

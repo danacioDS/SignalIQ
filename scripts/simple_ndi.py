@@ -2,7 +2,6 @@
 """Versión simplificada de NDI Signal Generation"""
 
 import psycopg2
-from datetime import datetime, timedelta
 import numpy as np
 
 def calculate_returns(prices):
@@ -70,7 +69,7 @@ def main():
             news = cur.fetchall()
             
             # Generar señal NDI simplificada
-            print(f"\n   📊 Estadísticas (últimos 5 días):")
+            print("\n   📊 Estadísticas (últimos 5 días):")
             print(f"      Retorno promedio: {avg_return*100:.2f}%")
             print(f"      Volatilidad: {volatility*100:.2f}%")
             

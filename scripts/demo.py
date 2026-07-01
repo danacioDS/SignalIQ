@@ -1,8 +1,7 @@
 """SignalIQ demo — end-to-end synthetic run with no external dependencies."""
 
 import json
-from datetime import date, datetime, timedelta
-from pathlib import Path
+from datetime import date, datetime
 
 from layers.layer3_config import CONFIG
 from layers.layer3_orchestrator import Layer3Orchestrator
@@ -106,14 +105,14 @@ def main():
         if r["signal_state"] == "ACTIVE" and r["ndi"] is not None
     )
 
-    print(f"\n=== SUMMARY ===")
+    print("\n=== SUMMARY ===")
     print(f"  Days processed:        {len(dates_sorted)}")
     print(f"  Tickers:               {TICKERS}")
     print(f"  Total NDI signals:     {total_signals}")
     print(f"  ACTIVE signals:        {total_active}")
     print(f"  Persistence file:      {PERSISTENCE_FILE}")
-    print(f"  External deps:         None (stdlib only)")
-    print(f"\nDone. Run `python demo.py` again for identical output (seed=42).")
+    print("  External deps:         None (stdlib only)")
+    print("\nDone. Run `python demo.py` again for identical output (seed=42).")
 
 
 if __name__ == "__main__":

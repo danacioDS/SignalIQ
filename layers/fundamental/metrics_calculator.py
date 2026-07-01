@@ -1,7 +1,6 @@
 """Métricas fundamentales según especificación de SignalIQ"""
 
-import numpy as np
-from typing import Dict, Optional, Any
+from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime
 

@@ -1,7 +1,7 @@
 """Fundamental score aggregator for SignalIQ"""
 
 import numpy as np
-from typing import Dict, Optional, List
+from typing import Dict
 from .metrics_calculator import FundamentalMetrics
 
 

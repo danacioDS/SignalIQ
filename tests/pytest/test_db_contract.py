@@ -15,11 +15,11 @@ def test_migrations_idempotent():
     if not db_url:
         pytest.skip("DATABASE_URL not set")
     result1 = subprocess.run(
-        ['psql', db_url, '-f', 'data_storage/master_build.sql'],
+        ['psql', db_url, '-f', 'sql/master_build.sql'],
         capture_output=True, text=True
     )
     result2 = subprocess.run(
-        ['psql', db_url, '-f', 'data_storage/master_build.sql'],
+        ['psql', db_url, '-f', 'sql/master_build.sql'],
         capture_output=True, text=True
     )
     assert result2.returncode == 0, f"Migration not idempotent: {result2.stderr}"

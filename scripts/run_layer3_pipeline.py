@@ -5,7 +5,7 @@ import os
 import sys
 import psycopg2
 import psycopg2.extras
-from datetime import datetime, timedelta
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

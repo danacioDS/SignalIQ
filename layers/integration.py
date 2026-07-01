@@ -6,11 +6,9 @@ Provides a single entry point that wires together:
   - PersistenceTracker (Layer 4 – state management)
 """
 
-from typing import Any, Optional
+from typing import Optional
 
-from layers.fundamental.fundamental_engine import FundamentalEngine
 from layers.layer4_orchestrator import Layer4Orchestrator
-from layers.layer4_persistence import PersistenceTracker
 
 
 def run_pipeline(

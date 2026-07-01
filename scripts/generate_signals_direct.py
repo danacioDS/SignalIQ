@@ -5,8 +5,7 @@ import os
 import sys
 import psycopg2
 import psycopg2.extras
-from datetime import datetime, timedelta
-import numpy as np
+from datetime import datetime
 
 DATABASE_URL = os.environ.get('RENDER_DATABASE_URL')
 if not DATABASE_URL:

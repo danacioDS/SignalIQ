@@ -25,7 +25,7 @@ print(f"\n📅 Rango de fechas: {df['date'].min()} a {df['date'].max()}")
 print(f"\n🔍 Señales NDI no nulas: {df['ndi'].notna().sum()}")
 
 if df['ndi'].notna().sum() > 0:
-    print(f"\n📈 Últimas señales:")
+    print("\n📈 Últimas señales:")
     print(df[df['ndi'].notna()].tail(10).to_string())
 
 conn.close()

@@ -2,7 +2,7 @@ import json
 import logging
 import sys
 import time
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 
 import pandas as pd
 import yfinance as yf

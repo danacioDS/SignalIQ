@@ -5,14 +5,13 @@ import os
 import sys
 import psycopg2
 import psycopg2.extras
-from datetime import datetime, timedelta, date
+from datetime import datetime
 from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from layers.layer3_orchestrator import Layer3Orchestrator
 from layers.layer3_momentum import MomentumProcessor
-from layers.layer3_sentiment import SentimentProcessor
 from layers.layer4_orchestrator import Layer4Orchestrator, process_asset
 from layers.layer4_persistence import PersistenceTracker
 
@@ -210,13 +209,13 @@ for dt in sorted(news_by_date.keys()):
 try:
     cur.execute("SELECT ticker, COUNT(*) FROM layer4.signals GROUP BY ticker ORDER BY ticker")
     stats = cur.fetchall()
-    print(f"\n📊 Resumen de señales:")
+    print("\n📊 Resumen de señales:")
     for row in stats:
         print(f"  {row['ticker']}: {row['count']} señales")
 
     cur.execute("SELECT ticker, ndi, regime, signal_state, confidence FROM layer4.signals ORDER BY signal_date DESC LIMIT 5")
     signals = cur.fetchall()
-    print(f"\n📈 Últimas señales:")
+    print("\n📈 Últimas señales:")
     for s in signals:
         ndi_str = f"{s['ndi']:.3f}" if s['ndi'] is not None else "N/A"
         print(f"  {s['ticker']}: NDI={ndi_str} | {s['regime']} | {s['signal_state']} | Conf={s['confidence']}")
