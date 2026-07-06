@@ -16,6 +16,7 @@ import logging
 import re as _re
 import google.generativeai as genai
 import numpy as np
+from app.auth import require_api_key, require_api_key_optional
 
 from app.db import init_pool, close_pool, execute_query_one, get_connection, put_connection
 from app.llm_service import llm_service
@@ -72,7 +73,7 @@ CORS(app,
          "http://127.0.0.1:10000"
      ],
      methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-API-Key"],
      expose_headers=["Content-Type", "X-Total-Count"],
      supports_credentials=True,
      max_age=600)
@@ -198,10 +199,11 @@ def get_consistent_ndi(ticker: str) -> float:
     return ndi_map.get(ticker, 0.45)
 
 # ============================================================
-# PRICES (CORREGIDO - FÓRMULA CANÓNICA)
+# PRICES (CORREGIDO - FÓRMULA CANÓNICA) - CON AUTENTICACIÓN
 # ============================================================
 
 @app.route('/api/prices/<ticker>')
+@require_api_key
 @limiter.limit("10 per minute")
 def api_prices(ticker):
     err = _validate_ticker(ticker)
@@ -378,6 +380,7 @@ def api_version():
     })
 
 @app.route("/api/stats")
+@require_api_key_optional
 def api_stats():
     try:
         total = execute_query_one("SELECT COUNT(*) FROM signal_predictions")[0]
@@ -397,6 +400,7 @@ def api_stats():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/score/<ticker>")
+@require_api_key
 def api_score(ticker):
     err = _validate_ticker(ticker)
     if err:
@@ -432,6 +436,7 @@ def api_score(ticker):
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/classify", methods=["POST"])
+@require_api_key
 @limiter.limit("30 per minute")
 def api_classify():
     try:
@@ -460,10 +465,11 @@ def api_routes():
     })
 
 # ============================================================
-# ANALYZE (SIN AUTENTICACIÓN)
+# ANALYZE - CON AUTENTICACIÓN
 # ============================================================
 
 @app.route("/api/analyze/<ticker>")
+@require_api_key
 @limiter.limit("10 per minute")
 def api_analyze(ticker):
     err = _validate_ticker(ticker)
@@ -548,10 +554,11 @@ def api_analyze(ticker):
     })
 
 # ============================================================
-# ANALYZE-LLM
+# ANALYZE-LLM - CON AUTENTICACIÓN
 # ============================================================
 
 @app.route('/api/analyze-llm/<ticker>')
+@require_api_key
 @limiter.limit("10 per minute")
 def api_analyze_llm(ticker):
     err = _validate_ticker(ticker)
@@ -618,10 +625,11 @@ def api_analyze_llm(ticker):
     })
 
 # ============================================================
-# SIGNALS-LIVE (CORREGIDO - FÓRMULA CANÓNICA)
+# SIGNALS-LIVE (CORREGIDO - FÓRMULA CANÓNICA) - CON AUTENTICACIÓN
 # ============================================================
 
 @app.route('/api/signals-live')
+@require_api_key
 @limiter.limit("30 per minute")
 def api_signals_live():
     tickers_param = request.args.get('tickers', 'NVDA,AAPL,MSFT,TSLA,GOOGL,META,AMD,AMZN,JPM,KO')
@@ -732,7 +740,7 @@ def api_signals_live():
                         'color': color,
                         'confidence': round(confidence, 1),
                         'source': 'database',
-                        'formula': 'sentiment_zscore - momentum_zscore'  # ✅ Documentar
+                        'formula': 'sentiment_zscore - momentum_zscore'
                     })
                 else:
                     errors.append(f"No data found for {ticker}")
@@ -752,14 +760,15 @@ def api_signals_live():
         'errors': errors if errors else None,
         'timestamp': datetime.now().isoformat(),
         'source': 'database',
-        'formula': 'sentiment_zscore - momentum_zscore'  # ✅ Documentar
+        'formula': 'sentiment_zscore - momentum_zscore'
     })
 
 # ============================================================
-# SIGNALS-INTEL
+# SIGNALS-INTEL - CON AUTENTICACIÓN
 # ============================================================
 
 @app.route('/api/signals-intel')
+@require_api_key
 @limiter.limit("30 per minute")
 def api_signals_intel():
     ticker = request.args.get('ticker', '').strip().upper()
@@ -862,4 +871,3 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port
     )
-# force redeploy

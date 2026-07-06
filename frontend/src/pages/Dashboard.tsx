@@ -15,9 +15,14 @@ import {
 import { useSignalAnalysis } from '../hooks/useSignalAnalysis';
 
 // ==================== CONFIGURACIÓN ====================
-// Usar variable de entorno o fallback a producción
 const API_BASE = 'https://signaliq-api.onrender.com';
 const REFRESH_INTERVAL = 5 * 60 * 1000;
+
+// ✅ Headers para autenticación
+const getHeaders = () => ({
+  'X-API-Key': process.env.REACT_APP_API_KEY || 'signaliq-secret-key-2026',
+  'Content-Type': 'application/json',
+});
 
 const api = {
   signals: (tickers: string[]) => 
@@ -171,60 +176,62 @@ export default function Dashboard() {
   }, []);
 
   const fetchSignals = useCallback(async () => {
-  try {
-    setLoading(true);
-    setError('');
+    try {
+      setLoading(true);
+      setError('');
 
-    // ✅ Log de la URL que se está usando
-    const url = api.signals(defaultTickers);
-    console.log('📊 Fetching URL:', url);
+      const url = api.signals(defaultTickers);
+      console.log('📊 Fetching URL:', url);
 
-    const res = await fetch(url);
-    console.log('📊 Response status:', res.status);
+      // ✅ Usar headers con API Key
+      const res = await fetch(url, { headers: getHeaders() });
+      console.log('📊 Response status:', res.status);
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const data = await res.json();
-    console.log('📊 Data received:', data);
-
-    if (data?.success && Array.isArray(data.signals) && data.signals.length > 0) {
-
-      // ✅ CORRECCIÓN: Usar sentiment_zscore y momentum_zscore directamente
-      const formatted = data.signals.map((item: any) => {
-        // Log para depurar cada item
-        console.log(`📊 ${item.ticker}: sentiment_zscore=${item.sentiment_zscore}, momentum_zscore=${item.momentum_zscore}`);
-        
-        return {
-          ticker: item.ticker,
-          ndi: item.ndi || 0,
-          sentiment: item.sentiment_zscore ?? 0,
-          momentum: item.momentum_zscore ?? 0,
-          price: item.current_price || 0,
-          sector: sectorMap[item.ticker] || 'Other',
-          confidence: item.confidence || 70,
-          regime: item.regime || 'No Data',
-        };
-      });
-
-      console.log('📊 Datos formateados:', formatted);
-
-      setSignals(formatted);
-      
-      if (formatted.length > 0 && !selectedTicker) {
-        setSelectedTicker(formatted[0].ticker);
+      if (!res.ok) {
+        if (res.status === 401) {
+          setError('⚠️ Unauthorized: Invalid API Key. Please check your configuration.');
+        }
+        throw new Error(`HTTP ${res.status}`);
       }
-    } else {
+
+      const data = await res.json();
+      console.log('📊 Data received:', data);
+
+      if (data?.success && Array.isArray(data.signals) && data.signals.length > 0) {
+        const formatted = data.signals.map((item: any) => {
+          console.log(`📊 ${item.ticker}: sentiment_zscore=${item.sentiment_zscore}, momentum_zscore=${item.momentum_zscore}`);
+          
+          return {
+            ticker: item.ticker,
+            ndi: item.ndi || 0,
+            sentiment: item.sentiment_zscore ?? 0,
+            momentum: item.momentum_zscore ?? 0,
+            price: item.current_price || 0,
+            sector: sectorMap[item.ticker] || 'Other',
+            confidence: item.confidence || 70,
+            regime: item.regime || 'No Data',
+          };
+        });
+
+        console.log('📊 Datos formateados:', formatted);
+
+        setSignals(formatted);
+        
+        if (formatted.length > 0 && !selectedTicker) {
+          setSelectedTicker(formatted[0].ticker);
+        }
+      } else {
+        setSignals([]);
+        setError('No data available from the API.');
+      }
+    } catch (err) {
+      console.error('Error fetching signals:', err);
+      setError('⚠️ Could not load market data.');
       setSignals([]);
-      setError('No data available from the API.');
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    console.error('Error fetching signals:', err);
-    setError('⚠️ Could not load market data.');
-    setSignals([]);
-  } finally {
-    setLoading(false);
-  }
-}, [selectedTicker]);
+  }, [selectedTicker]);
 
   useEffect(() => {
     fetchSignals();
@@ -248,7 +255,8 @@ export default function Dashboard() {
       if (!selectedTicker) return;
 
       try {
-        const res = await fetch(api.prices(selectedTicker));
+        // ✅ Usar headers con API Key
+        const res = await fetch(api.prices(selectedTicker), { headers: getHeaders() });
         if (!res.ok) return;
         const data = await res.json();
         if (data?.price_history?.length) {
