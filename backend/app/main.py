@@ -888,4 +888,4 @@ if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=port
-    )
+    )# FORCE CORS FIX Mon Jul  6 17:20:34 -04 2026
