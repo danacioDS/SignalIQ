@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import json
 import logging
@@ -368,7 +368,7 @@ def api_health():
     return jsonify({
         "status": "ok",
         "mode": "REAL",
-        "timestamp": datetime.now().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat(),
     })
 
 @app.route("/api/version")
