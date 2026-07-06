@@ -70,11 +70,12 @@ CORS(app,
          "http://127.0.0.1:3000",
          "https://signaliq-zeta-ten.vercel.app",
          "https://signaliq-zeta.vercel.app",
+         "https://signaliq-zeta-hop3d0d23-daniel-canedo-s-projects.vercel.app",  # ✅ Agregar esta URL
          "http://localhost:10000",
          "http://127.0.0.1:10000"
      ],
      methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-API-Key"],  # ✅ Agregar X-API-Key
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-API-Key"],
      expose_headers=["Content-Type", "X-Total-Count"],
      supports_credentials=True,
      max_age=600)
