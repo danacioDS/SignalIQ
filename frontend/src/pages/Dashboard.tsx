@@ -21,7 +21,6 @@ const REFRESH_INTERVAL = 5 * 60 * 1000;
 // ✅ Headers para autenticación
 
 const getHeaders = () => ({
-  'X-API-Key': 'signaliq-secret-key-2026',
   'Content-Type': 'application/json',
 });
 
