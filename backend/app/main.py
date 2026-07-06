@@ -33,6 +33,7 @@ USE_JSON_LOGS = os.environ.get('USE_JSON_LOGS', 'true').lower() == 'true'
 class JSONFormatter(logging.Formatter):
     def format(self, record):
         return json.dumps({
+            # ✅ CORRECTO (funciona en Python 3.11)
             'timestamp': datetime.utcnow().isoformat(),
             'level': record.levelname,
             'name': record.name,
