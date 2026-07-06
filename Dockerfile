@@ -20,3 +20,4 @@ EXPOSE 10000
 
 # Comando para ejecutar
 CMD ["python", "-m", "app.main"]
+# FORCE CORS FIX Mon Jul  6 17:22:44 -04 2026
