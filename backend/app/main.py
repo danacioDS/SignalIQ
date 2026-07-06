@@ -68,7 +68,7 @@ CORS(app,
      origins=[
          "http://localhost:3000",
          "http://127.0.0.1:3000",
-         "https://signaliq-zeta-ten.vercel.app",  # ✅ ESTA ES LA URL DEFINITIVA
+         "https://signaliq-zeta-ten.vercel.app",  # ✅ URL definitiva
          "https://signaliq-zeta.vercel.app",
          "http://localhost:10000",
          "http://127.0.0.1:10000"
