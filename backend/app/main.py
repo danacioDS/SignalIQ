@@ -1,4 +1,3 @@
-# FORCE CORS FIX - $(date)
 """SignalIQ API - Production (Sin Mocks)"""
 
 print("=" * 60)
@@ -69,13 +68,13 @@ CORS(app,
      origins=[
          "http://localhost:3000",
          "http://127.0.0.1:3000",
-         "https://signaliq-zeta-ten.vercel.app",  # ✅ URL definitiva
+         "https://signaliq-zeta-ten.vercel.app",
          "https://signaliq-zeta.vercel.app",
          "http://localhost:10000",
          "http://127.0.0.1:10000"
      ],
      methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-API-Key"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-API-Key"],  # ✅ Agregar X-API-Key
      expose_headers=["Content-Type", "X-Total-Count"],
      supports_credentials=True,
      max_age=600)
@@ -889,5 +888,4 @@ if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=port
-    )# FORCE CORS FIX Mon Jul  6 17:20:34 -04 2026
-# CORS FIX - DEPLOY Mon Jul  6 18:07:13 -04 2026
+    )
