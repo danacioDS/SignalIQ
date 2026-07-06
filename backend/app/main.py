@@ -1,3 +1,4 @@
+# FORCE CORS FIX - $(date)
 """SignalIQ API - Production (Sin Mocks)"""
 
 print("=" * 60)
