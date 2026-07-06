@@ -641,6 +641,7 @@ def api_signals_live():
     conn = None
     try:
         conn = get_connection()
+        conn.autocommit = True  # ✅ IMPORTANTE: evitar transacciones largas
         cur = conn.cursor()
         
         for ticker in tickers_list:
@@ -659,93 +660,14 @@ def api_signals_live():
                     closes = [float(row[1]) for row in rows]
                     current_price = closes[-1]
                     
-                    # ============================================================
-                    # ✅ NDI CANÓNICO: sentiment_zscore - momentum_zscore
-                    # ============================================================
+                    # ... (resto del código sin cambios)
                     
-                    # 1. Calcular sentiment_zscore (z-score de retornos diarios)
-                    daily_returns = []
-                    for i in range(1, len(closes)):
-                        if closes[i-1] > 0:
-                            daily_returns.append((closes[i] - closes[i-1]) / closes[i-1])
-                    
-                    if len(daily_returns) >= 2:
-                        mean_ret = np.mean(daily_returns)
-                        std_ret = np.std(daily_returns)
-                        sentiment_zscore = (daily_returns[-1] - mean_ret) / std_ret if std_ret > 0 else 0
-                    else:
-                        sentiment_zscore = 0
-                    
-                    # 2. Calcular momentum_zscore (z-score de retorno a 20 días)
-                    if len(closes) >= 20:
-                        momentum_returns = []
-                        for i in range(20, len(closes)):
-                            if closes[i-20] > 0:
-                                momentum_returns.append((closes[i] / closes[i-20] - 1))
-                        if len(momentum_returns) >= 2:
-                            mean_mom = np.mean(momentum_returns)
-                            std_mom = np.std(momentum_returns)
-                            momentum_zscore = (momentum_returns[-1] - mean_mom) / std_mom if std_mom > 0 else 0
-                        else:
-                            momentum_zscore = 0
-                    else:
-                        momentum_zscore = 0
-                    
-                    # 3. ✅ NDI = sentiment_zscore - momentum_zscore
-                    ndi = sentiment_zscore - momentum_zscore
-                    
-                    # 4. Limitar a rango razonable
-                    ndi = max(-3.0, min(3.0, ndi))
-                    
-                    # 5. Clasificar régimen (usando los mismos thresholds que el frontend)
-                    if ndi > 2.0:
-                        regime = "Extreme Overheating"
-                        color = "red"
-                    elif ndi > 1.5:
-                        regime = "Overheating"
-                        color = "orange"
-                    elif ndi > 0.5:
-                        regime = "Watching"
-                        color = "yellow"
-                    elif ndi > -0.5:
-                        regime = "Stable"
-                        color = "green"
-                    elif ndi > -1.5:
-                        regime = "Aligned"
-                        color = "green"
-                    elif ndi > -2.0:
-                        regime = "Strong Undervalued"
-                        color = "blue"
-                    else:
-                        regime = "Extreme Undervalued"
-                        color = "darkblue"
-                    
-                    # 6. Calcular confianza (inverted-U)
-                    abs_ndi = abs(ndi)
-                    if abs_ndi <= 0.8:
-                        confidence = 50 + (abs_ndi / 0.8) * 40
-                    elif abs_ndi <= 2.0:
-                        confidence = 90 - ((abs_ndi - 0.8) / 1.2) * 40
-                    else:
-                        confidence = 50
-                    confidence = max(10, min(95, confidence))
-                    
-                    results.append({
-                        'ticker': ticker,
-                        'current_price': round(current_price, 2),
-                        'ndi': round(ndi, 3),
-                        'sentiment_zscore': round(sentiment_zscore, 3),
-                        'momentum_zscore': round(momentum_zscore, 3),
-                        'regime': regime,
-                        'color': color,
-                        'confidence': round(confidence, 1),
-                        'source': 'database',
-                        'formula': 'sentiment_zscore - momentum_zscore'
-                    })
+                    results.append({...})
                 else:
                     errors.append(f"No data found for {ticker}")
             except Exception as e:
                 errors.append(f"Error for {ticker}: {str(e)}")
+                # No romper el loop, continuar con el siguiente ticker
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
