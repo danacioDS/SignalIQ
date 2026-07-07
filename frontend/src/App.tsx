@@ -2,8 +2,6 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import MarketIntelligence from './pages/MarketIntelligence';
-
-// Importar las otras páginas
 import EconomicFoundation from './pages/EconomicFoundation';
 import Data from './pages/Data';
 import TechStack from './pages/TechStack';
@@ -27,6 +25,7 @@ const App: React.FC = () => {
       minHeight: '100vh',
       color: '#e2e8f0'
     }}>
+      {/* Barra de navegación - ANCHO COMPLETO */}
       <nav style={{ 
         padding: '16px 32px',
         borderBottom: '1px solid #334155',
@@ -37,6 +36,8 @@ const App: React.FC = () => {
         position: 'sticky',
         top: 0,
         zIndex: 100,
+        width: '100%',
+        boxSizing: 'border-box',
       }}>
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
@@ -49,10 +50,11 @@ const App: React.FC = () => {
                 textDecoration: 'none',
                 fontWeight: isActive ? '700' : '500',
                 fontSize: '14px',
-                padding: '6px 16px',
+                padding: '8px 18px',
                 borderRadius: '6px',
-                background: isActive ? 'rgba(108, 99, 255, 0.1)' : 'transparent',
+                background: isActive ? 'rgba(108, 99, 255, 0.15)' : 'transparent',
                 transition: 'all 0.2s',
+                borderBottom: isActive ? '2px solid #6c63ff' : '2px solid transparent',
               }}
             >
               {item.label}
@@ -61,7 +63,8 @@ const App: React.FC = () => {
         })}
       </nav>
 
-      <div style={{ padding: '24px 32px' }}>
+      {/* Contenido */}
+      <div style={{ padding: '24px 32px', maxWidth: '1400px', margin: '0 auto' }}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/intelligence" element={<MarketIntelligence />} />
