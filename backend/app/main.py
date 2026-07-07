@@ -833,13 +833,15 @@ def api_signals_intel():
         if conn:
             put_connection(conn)
 
+
 # ============================================================
-# REGISTRAR BLUEPRINTS (ANTES DEL FRONTEND)
+# REGISTRAR BLUEPRINTS (DESPUÉS DE CREAR APP, ANTES DEL FRONTEND)
 # ============================================================
 app.register_blueprint(market_intel_bp)
 
+
 # ============================================================
-# FRONTEND
+# FRONTEND (SIEMPRE AL FINAL)
 # ============================================================
 
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
@@ -865,12 +867,14 @@ def root():
 
 @app.route("/<path:path>")
 def frontend_catchall(path):
+    # Las rutas API ya fueron manejadas antes de llegar aquí
     if '.' in path and not path.startswith('api/'):
         file_path = os.path.join(static_dir, path)
         if os.path.exists(file_path) and os.path.isfile(file_path):
             return send_from_directory(static_dir, path)
     
     return send_from_directory(static_dir, "index.html")
+
 
 # ============================================================
 # RUN
