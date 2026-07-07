@@ -67,27 +67,14 @@ def health():
         'mode': 'yfinance_with_news'
     })
 
+/////////////////////////////////////////////
 @app.route('/api/ticker/analysis/<ticker>')
 def ticker_analysis(ticker):
     try:
         ticker = ticker.upper()
         logger.info(f"📊 Analizando {ticker}")
         
-        # 1. Obtener precio (yfinance)
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period="60d")
-        
-        if hist.empty:
-            return jsonify({'error': f'No data for {ticker}'}), 404
-        
-        closes = hist['Close'].tolist()
-        current_price = closes[-1] if closes else 0
-        
-        # 2. Calcular NDI (Layer 4)
-        ndi, sentiment, momentum = calculate_narrative_divergence_index(closes)
-        regime = classify_regime(ndi)
-        
-        # 3. Obtener noticias REALES
+        # 1. Obtener noticias REALES (SIEMPRE)
         news_data = process_news_for_ticker(ticker)
         news_items = []
         for h, s in zip(news_data['headlines'], news_data['scores']):
@@ -97,26 +84,68 @@ def ticker_analysis(ticker):
                 'source': 'RSS Feed'
             })
         
-        # 4. Obtener información de la empresa
-        info = stock.info
-        company_name = info.get('longName', info.get('shortName', ticker))
-        sector = info.get('sector', 'Unknown')
+        # 2. Intentar obtener precio (yfinance)
+        price_data = {
+            'available': False,
+            'price': None,
+            'hist': []
+        }
         
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period="60d")
+            if not hist.empty:
+                closes = hist['Close'].tolist()
+                price_data['available'] = True
+                price_data['price'] = closes[-1] if closes else 0
+                price_data['hist'] = hist
+                logger.info(f"✅ Precio obtenido para {ticker}: {price_data['price']}")
+        except Exception as e:
+            logger.warning(f"⚠️ Error al obtener precio para {ticker}: {str(e)}")
+        
+        # 3. Calcular NDI (Layer 4) - usar precio mock si no hay datos
+        if price_data['available'] and not price_data['hist'].empty:
+            closes = price_data['hist']['Close'].tolist()
+            ndi, sentiment, momentum = calculate_narrative_divergence_index(closes)
+        else:
+            # Usar un precio mock para el cálculo del NDI
+            mock_price = 100.0
+            mock_closes = [mock_price] * 60
+            ndi, sentiment, momentum = calculate_narrative_divergence_index(mock_closes)
+            logger.info(f"🔄 Usando datos mock para NDI de {ticker}")
+        
+        regime = classify_regime(ndi)
+        
+        # 4. Obtener información de la empresa (si está disponible)
+        company_name = ticker
+        sector = 'Unknown'
+        industry = 'Unknown'
+        try:
+            if price_data['available']:
+                info = yf.Ticker(ticker).info
+                company_name = info.get('longName', info.get('shortName', ticker))
+                sector = info.get('sector', 'Unknown')
+                industry = info.get('industry', 'Unknown')
+        except:
+            pass
+        
+        # 5. Construir respuesta
         response = {
             'ticker': ticker,
             'companyName': company_name,
             'sector': sector,
-            'industry': info.get('industry', 'Unknown'),
+            'industry': industry,
+            'price_unavailable': not price_data['available'],
             'ndi': round(ndi, 3),
             'statusLabel': regime['regime'],
             'statusColor': regime['color'],
             'updatedAt': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
-            'price': current_price,
+            'price': price_data['price'] if price_data['available'] else None,
             'quantitativeMetrics': {
                 'sentiment': round(sentiment, 3),
                 'momentum': round(momentum, 3),
                 'divergence': round(ndi, 3),
-                'sourcesCount': len(hist)
+                'sourcesCount': len(news_data['headlines'])
             },
             'narrativeBreakdown': {
                 'consensusPercentage': 74,
@@ -169,12 +198,16 @@ def ticker_analysis(ticker):
             }
         }
         
+        # 6. Si no hay precio, agregar mensaje adicional
+        if not price_data['available']:
+            response['message'] = "Precio no disponible temporalmente, pero las noticias se muestran correctamente."
+        
         return jsonify(response)
         
     except Exception as e:
-        logger.error(f"❌ Error: {str(e)}")
+        logger.error(f"❌ Error en ticker_analysis: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
+/////////////////////////////////////////////
 @app.route('/api/tickers')
 def get_tickers():
     return jsonify({
