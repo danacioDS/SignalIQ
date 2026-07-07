@@ -1,98 +1,94 @@
 /**
  * Market Intelligence - API Client
- * Intenta backend, fallback a mocks
+ * Combina: backend para NDI + frontend para precios reales (yfinance)
  */
 
 import { TickerAnalysisResponse } from '../types/market-intelligence';
+import { getStockData, StockData } from '../services/yfinance-service';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://signaliq-l8mi.onrender.com';
 
 // ============================================================
-// DATOS MOCK
+// DATOS DE RESPALDO PARA NDI (si el backend falla)
 // ============================================================
 
-const createMockData = (ticker: string): TickerAnalysisResponse => {
-  const baseData: TickerAnalysisResponse = {
-    ticker: ticker,
-    companyName: ticker === 'NVDA' ? 'NVIDIA Corporation' :
-                  ticker === 'AAPL' ? 'Apple Inc.' :
-                  ticker === 'MSFT' ? 'Microsoft Corporation' :
-                  ticker === 'TSLA' ? 'Tesla Inc.' :
-                  ticker === 'GOOGL' ? 'Alphabet Inc.' :
-                  ticker === 'META' ? 'Meta Platforms' :
-                  ticker === 'AMD' ? 'Advanced Micro Devices' :
-                  ticker === 'AMZN' ? 'Amazon.com Inc.' :
-                  ticker === 'JPM' ? 'JPMorgan Chase' :
-                  ticker === 'KO' ? 'Coca-Cola Company' : ticker,
-    sector: 'Technology',
-    industry: 'Semiconductors',
-    ndi: 0,
-    statusLabel: 'NEUTRAL',
-    statusColor: 'yellow' as const,
-    updatedAt: new Date().toLocaleString('en-US', { 
-      timeZone: 'America/New_York',
-      hour12: false 
-    }),
-    quantitativeMetrics: {
-      sentiment: 0,
-      momentum: 0,
-      divergence: 0,
-      sourcesCount: 0,
-    },
-    narrativeBreakdown: {
-      consensusPercentage: 50,
-      consensusLabel: 'Moderado',
-      intensityPercentage: 50,
-      intensityLabel: 'Moderada',
-      dispersionValue: 0.5,
-      dispersionLabel: 'Media',
-      mediaBias: {
-        centerBizPercentage: 60,
-        leftPercentage: 20,
-        rightPercentage: 20,
-      },
-    },
-    narrativeExhaustion: {
-      level: 'BAJA',
-      conditionsObserved: 0,
-      totalConditions: 3,
-      conditionsDetails: [],
-      disclaimer: 'Feature en fase beta. Requiere validación adicional.',
-      isBeta: true,
-    },
-    aiInterpretation: `Análisis para ${ticker}. El NDI actual sugiere un mercado en equilibrio.`,
-    newsSummary: {
-      items: [],
-      positiveCount: 0,
-      negativeCount: 0,
-      averageSentiment: 0,
-    },
-    relativeContext: {
-      sectorName: 'Technology',
-      comparison: {
-        tickerSentiment: 0,
-        sectorSentiment: 0,
-        sentimentDifference: 0,
-        sentimentLabel: '🟢 en línea con el sector',
-        tickerConsensus: 50,
-        sectorConsensus: 50,
-        consensusDifference: 0,
-        consensusLabel: '🟢 en línea con el sector',
-        tickerExhaustion: 'BAJA',
-        sectorExhaustion: 'BAJA',
-        exhaustionLabel: '🟢 en línea con el sector',
-      },
-      sectorRanking: [],
-      insight: `${ticker} se encuentra en línea con el promedio del sector.`,
-    },
-  };
+const FALLBACK_NDI: Record<string, any> = {
+  'NVDA': { ndi: 2.707, sentiment: 1.156, momentum: -1.551, regime: 'EXTREME OVERHEATING', color: 'red' },
+  'AAPL': { ndi: 0.522, sentiment: 0.321, momentum: -0.201, regime: 'NEUTRAL', color: 'yellow' },
+  'MSFT': { ndi: 0.733, sentiment: 0.511, momentum: -0.222, regime: 'WATCHING', color: 'orange' },
+  'TSLA': { ndi: 1.272, sentiment: 0.247, momentum: -1.025, regime: 'WATCHING', color: 'orange' },
+  'GOOGL': { ndi: 0.095, sentiment: 0.113, momentum: 0.018, regime: 'NEUTRAL', color: 'yellow' },
+  'META': { ndi: -1.097, sentiment: -1.554, momentum: -0.457, regime: 'ALIGNED', color: 'green' },
+  'AMD': { ndi: 1.791, sentiment: 0.532, momentum: -1.259, regime: 'OVERHEATING', color: 'orange' },
+  'AMZN': { ndi: -0.377, sentiment: -1.552, momentum: -1.176, regime: 'STABLE', color: 'green' },
+  'JPM': { ndi: -1.091, sentiment: 0.794, momentum: 1.885, regime: 'ALIGNED', color: 'green' },
+  'KO': { ndi: 0.931, sentiment: -0.583, momentum: -1.514, regime: 'WATCHING', color: 'orange' },
+};
 
-  const overrides: Record<string, Partial<TickerAnalysisResponse>> = {
-    NVDA: {
-      ndi: 2.707,
-      statusLabel: 'EXTREME OVERHEATING',
-      statusColor: 'red',
-      quantitativeMetrics: { sentiment: 1.156, momentum: -1.551, divergence: 2.707, sourcesCount: 42 },
+function classifyRegime(ndi: number) {
+  if (ndi > 2.0) return { regime: 'EXTREME OVERHEATING', color: 'red', label: 'SELL' };
+  if (ndi > 1.5) return { regime: 'OVERHEATING', color: 'orange', label: 'REDUCE' };
+  if (ndi > 0.5) return { regime: 'WATCHING', color: 'orange', label: 'MONITOR' };
+  if (ndi > -0.5) return { regime: 'NEUTRAL', color: 'yellow', label: 'HOLD' };
+  if (ndi > -1.5) return { regime: 'ALIGNED', color: 'green', label: 'BUY' };
+  if (ndi > -2.0) return { regime: 'STRONG UNDERVALUED', color: 'green', label: 'STRONG BUY' };
+  return { regime: 'CAPITULATION', color: 'blue', label: 'ACCUMULATE' };
+}
+
+// ============================================================
+// FUNCIÓN PRINCIPAL - Precios reales + NDI
+// ============================================================
+
+export const fetchTickerAnalysis = async (ticker: string): Promise<TickerAnalysisResponse> => {
+  try {
+    // 1. Obtener precio REAL desde Yahoo Finance (frontend)
+    const stockData = await getStockData(ticker);
+    
+    // 2. Intentar obtener NDI del backend
+    let ndiData: any = null;
+    let ndiSource = 'fallback';
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/ticker/analysis/${ticker}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.ndi !== undefined) {
+          ndiData = data;
+          ndiSource = 'backend';
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ Backend no disponible, usando NDI de respaldo');
+    }
+    
+    // Si no hay datos del backend, usar fallback
+    if (!ndiData) {
+      ndiData = FALLBACK_NDI[ticker] || { ndi: 0, sentiment: 0, momentum: 0 };
+    }
+    
+    // 3. Clasificar régimen
+    const regime = classifyRegime(ndiData.ndi || 0);
+    
+    // 4. Construir respuesta combinada
+    return {
+      ticker: ticker,
+      companyName: stockData.companyName,
+      sector: stockData.sector || 'Unknown',
+      industry: 'Unknown',
+      ndi: ndiData.ndi || 0,
+      statusLabel: ndiData.regime || regime.regime,
+      statusColor: ndiData.color || regime.color,
+      updatedAt: new Date().toLocaleString('es-ES', { 
+        timeZone: 'America/New_York',
+        hour12: false 
+      }),
+      price: stockData.price,
+      quantitativeMetrics: {
+        sentiment: ndiData.sentiment || 0,
+        momentum: ndiData.momentum || 0,
+        divergence: ndiData.ndi || 0,
+        sourcesCount: 30
+      },
       narrativeBreakdown: {
         consensusPercentage: 74,
         consensusLabel: 'Alto',
@@ -100,160 +96,53 @@ const createMockData = (ticker: string): TickerAnalysisResponse => {
         intensityLabel: 'Moderada',
         dispersionValue: 0.22,
         dispersionLabel: 'Baja',
-        mediaBias: { centerBizPercentage: 60, leftPercentage: 20, rightPercentage: 20 },
+        mediaBias: {
+          centerBizPercentage: 60,
+          leftPercentage: 20,
+          rightPercentage: 20
+        }
       },
       narrativeExhaustion: {
-        level: 'ALTA',
-        conditionsObserved: 3,
+        level: 'BAJA',
+        conditionsObserved: 0,
         totalConditions: 3,
-        conditionsDetails: [
-          { id: 'c1', description: 'Sentiment (+1.156) vs Momentum (-1.551) → Divergencia extrema', isMet: true },
-          { id: 'c2', description: 'Dispersión narrativa (0.22) → Baja (Efecto Cámara de Eco)', isMet: true },
-          { id: 'c3', description: 'Cobertura mediática (42 fuentes) → Duplica media de 14 días', isMet: true },
-        ],
-        disclaimer: 'Feature en fase beta. Requiere validación adicional.',
-        isBeta: true,
+        conditionsDetails: [],
+        disclaimer: 'Feature en fase beta.',
+        isBeta: true
       },
-      aiInterpretation: 'El desajuste cuantitativo en NVDA refleja una asimetría crítica: la cobertura mediática se mantiene en niveles de euforia institucional, mientras que la acción del precio experimenta un agotamiento distributivo.',
+      aiInterpretation: `${ticker}: NDI ${(ndiData.ndi || 0).toFixed(3)} - ${regime.regime}. Precio real: $${stockData.price.toFixed(2)} (${stockData.change > 0 ? '+' : ''}${stockData.changePercent.toFixed(2)}%)`,
+      newsSummary: {
+        items: [],
+        positiveCount: 0,
+        negativeCount: 0,
+        averageSentiment: 0
+      },
       relativeContext: {
-        sectorName: 'Technology',
+        sectorName: stockData.sector || 'Unknown',
         comparison: {
-          tickerSentiment: 1.156,
-          sectorSentiment: 0.45,
-          sentimentDifference: 0.70,
-          sentimentLabel: '🟢 más positivo',
-          tickerConsensus: 74,
-          sectorConsensus: 58,
-          consensusDifference: 16,
-          consensusLabel: '🟢 más consenso',
-          tickerExhaustion: 'ALTA',
-          sectorExhaustion: 'MEDIA',
-          exhaustionLabel: '🟠 +1 nivel',
+          tickerSentiment: ndiData.sentiment || 0,
+          sectorSentiment: 0,
+          sentimentDifference: 0,
+          sentimentLabel: '🟢 en línea con el sector',
+          tickerConsensus: 50,
+          sectorConsensus: 50,
+          consensusDifference: 0,
+          consensusLabel: '🟢 en línea con el sector',
+          tickerExhaustion: 'BAJA',
+          sectorExhaustion: 'BAJA',
+          exhaustionLabel: '🟢 en línea con el sector'
         },
         sectorRanking: [
-          { rank: 1, ticker: 'NVDA', companyName: 'NVIDIA', ndi: 2.707, regimeLabel: 'SELL', regimeColor: 'red' },
-          { rank: 2, ticker: 'AMD', companyName: 'AMD', ndi: 1.791, regimeLabel: 'REDUCE', regimeColor: 'orange' },
-          { rank: 3, ticker: 'INTC', companyName: 'Intel', ndi: 0.950, regimeLabel: 'MONITOR', regimeColor: 'yellow' },
-          { rank: 4, ticker: 'IBM', companyName: 'IBM', ndi: 0.450, regimeLabel: 'HOLD', regimeColor: 'green' },
-          { rank: 5, ticker: 'ORCL', companyName: 'Oracle', ndi: -0.200, regimeLabel: 'BUY', regimeColor: 'green' },
+          { rank: 1, ticker: ticker, companyName: stockData.companyName,
+            ndi: ndiData.ndi || 0, regimeLabel: regime.label || 'HOLD', regimeColor: regime.color || 'yellow' }
         ],
-        insight: 'NVDA muestra el NDI más alto del sector tecnológico, indicando la mayor divergencia entre narrativa y precio.',
-      },
-    },
-    AAPL: {
-      ndi: 0.522,
-      statusLabel: 'NEUTRAL',
-      statusColor: 'yellow',
-      quantitativeMetrics: { sentiment: 0.321, momentum: -0.201, divergence: 0.522, sourcesCount: 28 },
-      companyName: 'Apple Inc.',
-    },
-    MSFT: {
-      ndi: 0.733,
-      statusLabel: 'WATCHING',
-      statusColor: 'orange',
-      quantitativeMetrics: { sentiment: 0.511, momentum: -0.222, divergence: 0.733, sourcesCount: 31 },
-      companyName: 'Microsoft Corporation',
-    },
-    TSLA: {
-      ndi: 1.272,
-      statusLabel: 'WATCHING',
-      statusColor: 'orange',
-      quantitativeMetrics: { sentiment: 0.247, momentum: -1.025, divergence: 1.272, sourcesCount: 35 },
-      companyName: 'Tesla Inc.',
-      sector: 'Automotive',
-      industry: 'Automotive Manufacturing',
-    },
-    GOOGL: {
-      ndi: 0.095,
-      statusLabel: 'NEUTRAL',
-      statusColor: 'yellow',
-      quantitativeMetrics: { sentiment: 0.113, momentum: 0.018, divergence: 0.095, sourcesCount: 24 },
-      companyName: 'Alphabet Inc.',
-    },
-    META: {
-      ndi: 1.097,
-      statusLabel: 'WATCHING',
-      statusColor: 'orange',
-      quantitativeMetrics: { sentiment: 0.412, momentum: -0.685, divergence: 1.097, sourcesCount: 29 },
-      companyName: 'Meta Platforms',
-    },
-    AMD: {
-      ndi: 1.791,
-      statusLabel: 'OVERHEATING',
-      statusColor: 'orange',
-      quantitativeMetrics: { sentiment: 0.532, momentum: -1.259, divergence: 1.791, sourcesCount: 33 },
-      companyName: 'Advanced Micro Devices',
-    },
-    AMZN: {
-      ndi: -0.377,
-      statusLabel: 'STABLE',
-      statusColor: 'green',
-      quantitativeMetrics: { sentiment: -1.552, momentum: -1.176, divergence: -0.377, sourcesCount: 26 },
-      companyName: 'Amazon.com Inc.',
-    },
-    JPM: {
-      ndi: -1.091,
-      statusLabel: 'ALIGNED',
-      statusColor: 'green',
-      quantitativeMetrics: { sentiment: 0.794, momentum: 1.885, divergence: -1.091, sourcesCount: 19 },
-      companyName: 'JPMorgan Chase',
-      sector: 'Financial',
-      industry: 'Banking',
-    },
-    KO: {
-      ndi: 0.931,
-      statusLabel: 'WATCHING',
-      statusColor: 'orange',
-      quantitativeMetrics: { sentiment: -0.583, momentum: -1.514, divergence: 0.931, sourcesCount: 16 },
-      companyName: 'Coca-Cola Company',
-      sector: 'Consumer',
-      industry: 'Beverages',
-    },
-  };
-
-  const override = overrides[ticker];
-  if (override) {
-    return { ...baseData, ...override };
-  }
-
-  return baseData;
-};
-
-// ============================================================
-// FUNCIÓN PRINCIPAL - Intenta backend, fallback a mocks
-// ============================================================
-
-export const fetchTickerAnalysis = async (ticker: string): Promise<TickerAnalysisResponse> => {
-  try {
-    // Intentar llamar al backend
-    const response = await fetch(`${API_BASE_URL}/api/ticker/analysis/${ticker}`, {
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-
-    // Si la respuesta no es OK, usar mock
-    if (!response.ok) {
-      console.warn(`Backend responded with ${response.status}, using mock data for ${ticker}`);
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      return createMockData(ticker);
-    }
-
-    // Intentar parsear JSON
-    const text = await response.text();
-    try {
-      const data = JSON.parse(text);
-      return data;
-    } catch (parseError) {
-      // Si no es JSON válido, usar mock
-      console.warn('Backend response is not valid JSON, using mock data');
-      return createMockData(ticker);
-    }
+        insight: `${ticker}: NDI ${(ndiData.ndi || 0).toFixed(3)} - ${regime.regime}. Precio: $${stockData.price.toFixed(2)}`
+      }
+    };
+    
   } catch (error) {
-    // Si hay error de red, usar mock
-    console.warn(`Network error fetching ${ticker}, using mock data:`, error);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    return createMockData(ticker);
+    console.error('❌ Error en fetchTickerAnalysis:', error);
+    throw error;
   }
 };
 
@@ -263,24 +152,35 @@ export const fetchTickerAnalysis = async (ticker: string): Promise<TickerAnalysi
 
 export const searchTickers = async (query: string): Promise<string[]> => {
   const allTickers = ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META', 'AMD', 'AMZN', 'JPM', 'KO'];
-  
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  
   if (!query || query.length < 1) return [];
-  
-  const lowerQuery = query.toLowerCase();
-  return allTickers.filter(t => t.toLowerCase().includes(lowerQuery));
+  return allTickers.filter(t => t.toLowerCase().includes(query.toLowerCase()));
 };
 
 export const getSectorRanking = async (sector: string): Promise<any[]> => {
-  const mockRanking = [
-    { rank: 1, ticker: 'NVDA', ndi: 2.707, regime: 'SELL' },
-    { rank: 2, ticker: 'AMD', ndi: 1.791, regime: 'REDUCE' },
-    { rank: 3, ticker: 'INTC', ndi: 0.950, regime: 'MONITOR' },
-    { rank: 4, ticker: 'IBM', ndi: 0.450, regime: 'HOLD' },
-    { rank: 5, ticker: 'ORCL', ndi: -0.200, regime: 'BUY' },
-  ];
-  
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  return mockRanking;
+  const tickers = ['NVDA', 'AMD', 'INTC', 'IBM', 'ORCL'];
+  const results = await Promise.all(
+    tickers.map(async (ticker, index) => {
+      try {
+        const data = await fetchTickerAnalysis(ticker);
+        return {
+          rank: index + 1,
+          ticker: ticker,
+          companyName: data.companyName || ticker,
+          ndi: data.ndi || 0,
+          regimeLabel: data.statusLabel || 'NEUTRAL',
+          regimeColor: data.statusColor || 'yellow',
+        };
+      } catch {
+        return {
+          rank: index + 1,
+          ticker: ticker,
+          companyName: ticker,
+          ndi: 0,
+          regimeLabel: 'NEUTRAL',
+          regimeColor: 'yellow',
+        };
+      }
+    })
+  );
+  return results.sort((a, b) => b.ndi - a.ndi);
 };

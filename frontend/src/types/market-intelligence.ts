@@ -98,3 +98,9 @@ export interface TickerAnalysisResponse {
   newsSummary: NewsSummaryData;
   relativeContext: RelativeContextData;
 }
+
+// Extender TickerAnalysisResponse con precio
+export interface TickerAnalysisResponse {
+  // ... campos existentes
+  price?: number;  // Precio en tiempo real
+}
