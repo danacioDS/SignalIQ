@@ -253,3 +253,7 @@ def get_ticker_analysis(ticker):
     finally:
         if conn:
             put_connection(conn)
+
+@market_intel_bp.route('/test', methods=['GET'])
+def test_endpoint():
+    return jsonify({'status': 'ok', 'message': 'Market Intelligence is working!'})
