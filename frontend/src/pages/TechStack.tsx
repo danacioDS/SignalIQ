@@ -1,4 +1,4 @@
-import { C } from "./styles";
+import { C } from "../components/styles";
 
 export default function TechStack() {
   return (

@@ -2,7 +2,7 @@ import React from 'react';
 import { C } from '../components/styles';
 import EconomicFoundation from '../components/EconomicFoundation';
 import Methodology from '../components/Methodology';
-import TechStack from '../components/TechStack';
+import TechStack from './TechStack';
 import Architecture from '../components/Architecture';
 
 export default function Docs() {

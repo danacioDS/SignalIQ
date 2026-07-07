@@ -1,15 +1,14 @@
 /**
  * Market Intelligence - API Client
- * En desarrollo: usa mocks
- * En producción: llama al backend real
+ * Intenta backend, fallback a mocks
  */
 
 import { TickerAnalysisResponse } from '../types/market-intelligence';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://signaliq-l8mi.onrender.com';
 
 // ============================================================
-// DATOS MOCK PARA DESARROLLO
+// DATOS MOCK
 // ============================================================
 
 const createMockData = (ticker: string): TickerAnalysisResponse => {
@@ -88,7 +87,6 @@ const createMockData = (ticker: string): TickerAnalysisResponse => {
     },
   };
 
-  // Personalizar por ticker
   const overrides: Record<string, Partial<TickerAnalysisResponse>> = {
     NVDA: {
       ndi: 2.707,
@@ -222,29 +220,41 @@ const createMockData = (ticker: string): TickerAnalysisResponse => {
 };
 
 // ============================================================
-// FUNCIÓN PRINCIPAL
+// FUNCIÓN PRINCIPAL - Intenta backend, fallback a mocks
 // ============================================================
 
 export const fetchTickerAnalysis = async (ticker: string): Promise<TickerAnalysisResponse> => {
-  // Simular latencia de red
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  try {
+    // Intentar llamar al backend
+    const response = await fetch(`${API_BASE_URL}/api/ticker/analysis/${ticker}`, {
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
 
-  // En producción, llamar al backend real
-  if (process.env.NODE_ENV === 'production') {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/ticker/analysis/${ticker}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch data for ${ticker}`);
-      }
-      return response.json();
-    } catch (error) {
-      console.warn('Fallback a datos mock para', ticker);
+    // Si la respuesta no es OK, usar mock
+    if (!response.ok) {
+      console.warn(`Backend responded with ${response.status}, using mock data for ${ticker}`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
       return createMockData(ticker);
     }
-  }
 
-  // En desarrollo: usar mocks
-  return createMockData(ticker);
+    // Intentar parsear JSON
+    const text = await response.text();
+    try {
+      const data = JSON.parse(text);
+      return data;
+    } catch (parseError) {
+      // Si no es JSON válido, usar mock
+      console.warn('Backend response is not valid JSON, using mock data');
+      return createMockData(ticker);
+    }
+  } catch (error) {
+    // Si hay error de red, usar mock
+    console.warn(`Network error fetching ${ticker}, using mock data:`, error);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return createMockData(ticker);
+  }
 };
 
 // ============================================================
