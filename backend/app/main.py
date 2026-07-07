@@ -11,6 +11,8 @@ import yfinance as yf
 import numpy as np
 
 
+# Opción 1: Usar sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from layers.layer4_measurement import calculate_narrative_divergence_index
 
 app = Flask(__name__)
