@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 from app.db import get_connection, put_connection
 
@@ -21,10 +21,8 @@ def get_ticker_analysis(ticker):
         cur.execute("""
             SELECT 
                 ndi,
-                sentiment_zscore,
-                momentum_zscore,
-                confidence,
                 regime,
+                confidence,
                 signal_date
             FROM layer4.signals
             WHERE ticker = %s
@@ -36,7 +34,7 @@ def get_ticker_analysis(ticker):
         if not row:
             return jsonify({'error': f'No signals found for {ticker}'}), 404
         
-        ndi, sentiment, momentum, confidence, regime, signal_date = row
+        ndi, regime, confidence, signal_date = row
         
         # ============================================================
         # 2. OBTENER PRECIO ACTUAL
@@ -52,7 +50,30 @@ def get_ticker_analysis(ticker):
         price = price_row[0] if price_row else 0
         
         # ============================================================
-        # 3. OBTENER FUENTES DE NOTICIAS (últimos 7 días)
+        # 3. OBTENER SENTIMENT Y MOMENTUM DESDE LA TABLA prices
+        # ============================================================
+        # Usamos los últimos 20 días para calcular momentum y sentimiento
+        cur.execute("""
+            SELECT close
+            FROM prices
+            WHERE ticker = %s
+            ORDER BY price_date DESC
+            LIMIT 20
+        """, (ticker,))
+        price_rows = cur.fetchall()
+        
+        if price_rows and len(price_rows) >= 2:
+            closes = [float(r[0]) for r in reversed(price_rows)]
+            # Sentiment: retorno diario (simplificado)
+            sentiment = (closes[-1] - closes[-2]) / closes[-2] if closes[-2] > 0 else 0
+            # Momentum: retorno de 20 días
+            momentum = (closes[-1] - closes[0]) / closes[0] if closes[0] > 0 else 0
+        else:
+            sentiment = 0
+            momentum = 0
+        
+        # ============================================================
+        # 4. OBTENER FUENTES DE NOTICIAS
         # ============================================================
         cur.execute("""
             SELECT source, COUNT(*) as count
@@ -67,7 +88,7 @@ def get_ticker_analysis(ticker):
         unique_sources = len(sources_rows)
         
         # ============================================================
-        # 4. OBTENER NOTICIAS RECIENTES
+        # 5. OBTENER NOTICIAS RECIENTES
         # ============================================================
         cur.execute("""
             SELECT source, headline, created_at
@@ -79,23 +100,24 @@ def get_ticker_analysis(ticker):
         news_rows = cur.fetchall()
         
         # ============================================================
-        # 5. CALCULAR MÉTRICAS NARRATIVAS
+        # 6. CALCULAR MÉTRICAS NARRATIVAS
         # ============================================================
-        consensus_pct = min(95, int(50 + confidence * 0.5)) if confidence else 50
-        intensity_pct = min(90, int(20 + unique_sources * 3)) if unique_sources else 20
+        consensus_pct = min(95, int(50 + (confidence or 50) * 0.5))
+        intensity_pct = min(90, int(20 + unique_sources * 3))
         dispersion = abs(sentiment - momentum) if sentiment and momentum else 0.5
         
         # ============================================================
-        # 6. NARRATIVE EXHAUSTION
+        # 7. NARRATIVE EXHAUSTION
         # ============================================================
         conditions_met = 0
         conditions_details = []
         
-        if sentiment and momentum and abs(sentiment - momentum) > 1.0:
+        # Condición 1: Divergencia sentiment vs momentum
+        if sentiment and momentum and abs(sentiment - momentum) > 0.1:
             conditions_met += 1
             conditions_details.append({
                 'id': 'cond-1',
-                'description': f'Sentiment ({sentiment:.3f}) vs Momentum ({momentum:.3f}) - Divergencia significativa',
+                'description': f'Sentiment ({sentiment:.3f}) vs Momentum ({momentum:.3f}) - Divergencia',
                 'isMet': True
             })
         else:
@@ -105,6 +127,7 @@ def get_ticker_analysis(ticker):
                 'isMet': False
             })
         
+        # Condición 2: Alta cobertura mediática
         if unique_sources > 5:
             conditions_met += 1
             conditions_details.append({
@@ -119,6 +142,7 @@ def get_ticker_analysis(ticker):
                 'isMet': False
             })
         
+        # Condición 3: Confianza alta
         if confidence and confidence > 70:
             conditions_met += 1
             conditions_details.append({
@@ -137,7 +161,7 @@ def get_ticker_analysis(ticker):
         exhaustion_status = exhaustion_map.get(conditions_met, 'BAJA')
         
         # ============================================================
-        # 7. RANKING REAL (sin hardcode)
+        # 8. RANKING REAL
         # ============================================================
         cur.execute("""
             SELECT ticker, ndi
@@ -156,7 +180,7 @@ def get_ticker_analysis(ticker):
         ]
         
         # ============================================================
-        # 8. RESPUESTA
+        # 9. RESPUESTA
         # ============================================================
         response = {
             'ticker': ticker,
@@ -189,14 +213,14 @@ def get_ticker_analysis(ticker):
                 'totalConditionsCount': 3,
                 'conditionsDetails': conditions_details,
             },
-            'aiInterpretation': f'{ticker}: Sentiment {sentiment:.3f}, Momentum {momentum:.3f}, NDI {ndi:.3f}. Régimen: {regime}.',
+            'aiInterpretation': f'{ticker}: NDI {ndi:.3f}, Régimen: {regime}. Divergencia entre narrativa y precio.',
             'newsSummary': {
                 'items': [
                     {
                         'id': f'news-{i}',
-                        'source': row[0] or 'Unknown',
+                        'source': row[0] if row else 'Unknown',
                         'stars': 3,
-                        'headline': row[1] or 'No headline available',
+                        'headline': row[1] if row else 'No headline available',
                         'sentimentScore': 0.0,
                     } for i, row in enumerate(news_rows)
                 ],
