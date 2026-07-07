@@ -12,12 +12,14 @@ Markets are driven by stories as much as by numbers. Stories are created, spread
 
 ### Key Features
 - **NDI formula**: `sentiment_zscore - momentum_zscore` (additive divergence in standard deviation units)
-- **4 risk regimes**: Aligned, Accumulation Divergence, Overheating Divergence, Insufficient Data
+- **4 risk regimes (core)**: Aligned, Accumulation Divergence, Overheating Divergence, Insufficient Data
+- **7 risk regimes (API)**: Extreme Overheating, Overheating, Watching, Stable, Aligned, (negative Aligned), Strong Undervalued
 - **3 signal states**: Inactive → Watching → Active (requires 2 consecutive threshold breaches)
 - **Inverted-U confidence**: Mid-range NDI (0.8–2.2) is most reliable; extreme values are down-weighted
 - **LLM Router**: Multi-provider support (Gemini, GLM/ZhipuAI, Groq, MOCK mode)
 - **Fundamental overlay**: Adjusts NDI risk/confidence based on valuation, growth, and financial health
 - **Stdlib-only core**: Core analytics are pure Python (only Layer 1 and Layer 5 have external deps)
+- **Market Intelligence**: Deep ticker analysis with narrative breakdown, exhaustion detection, and ranking
 
 ### Tech Stack
 
@@ -27,7 +29,7 @@ Markets are driven by stories as much as by numbers. Stories are created, spread
 | **Frontend** | React 19, TypeScript 4.9, Recharts 3.8, Axios 1.17 |
 | **Database** | PostgreSQL (public, raw, config, layer4 schemas) |
 | **AI/LLM** | Google Gemini (gemini-2.0-flash), Groq (qwen3-32b, llama-3.3-70b), GLM (glm-4.7-flash), MOCK mode |
-| **Data Sources** | Yahoo Finance (yfinance 0.2), Finnhub.io, 6 RSS feeds (feedparser) |
+| **Data Sources** | Yahoo Finance (yfinance 0.2), NewsAPI, 6 RSS feeds (feedparser) |
 | **Infrastructure** | Docker, Docker Compose, Vercel (frontend), Render (backend) |
 | **External Deps** | psycopg2-binary, requests, numpy (Layer 5 only), feedparser, httpx |
 
@@ -49,9 +51,10 @@ When narrative runs ahead of price action, SignalIQ flags it as exhaustion, dist
                                             │ HTTP / JSON
                      ┌──────────────────────▼──────────────────────────┐
                      │              Flask API (port 10000)             │
-                     │     14 endpoints · CORS · Rate Limiting        │
-                     │   Finnhub → yfinance → Mock (3-tier fallback)  │
+                     │     14+ endpoints · CORS · Rate Limiting       │
+                     │   yfinance (live) · PostgreSQL (history)        │
                      │   LLM Router (Gemini / Groq / GLM / MOCK)      │
+                     │   Market Intelligence Blueprint                 │
                      │   ThreadedConnectionPool · JSON logging         │
                      └──────────────────────┬──────────────────────────┘
                                             │
@@ -88,7 +91,7 @@ Data flows in two paths:
 
 **Core pipeline:** fetch → normalize → write (Layer 1) → store (Layer 2) → analyze (Layer 3) → generate signals (Layer 4) → fundamental overlay (Layer 5). Layer 4 exposes a functional API (`process_asset`, `process_batch`) that wires together measurement, persistence, and classification sublayers.
 
-**Live API path:** `/api/prices` or `/api/signals-live` → Finnhub → yfinance → Mock → simplified NDI → JSON response. Note: this path uses a different (simplified) NDI formula than the core pipeline.
+**Live API path:** `/api/prices`, `/api/signals`, `/api/market-intelligence` → yfinance → calculated NDI → JSON response. Note: this path uses a different NDI calculation than the core pipeline (recent return z-score vs momentum period z-score).
 
 **AI enhancement:** Layer 4 signals → `LLMRouter` (Gemini/GLM/Groq, configured via `PRIMARY_LLM` env var) → AI-powered analysis → Flask API → frontend/dashboard.
 
@@ -116,15 +119,19 @@ repo root/
 │   ├── Dockerfile                          # Backend Docker image
 │   ├── requirements.txt                    # Backend dependencies
 │   ├── run.sh                              # Dev startup script
+│   ├── fix_analyze.py                      # Analysis fix utility
+│   ├── render.yaml                         # Render deployment config
 │   ├── static/                             # Built frontend assets
 │   └── app/
-│       ├── main.py                         # 14 API routes, CORS, rate limiting
+│       ├── main.py                         # 889-line Flask API, Config class, 14+ routes
+│       ├── auth.py                         # API key auth decorators
 │       ├── db.py                           # ThreadedConnectionPool
 │       ├── llm_service.py                  # Groq-based LLM service
 │       ├── entity_linking.py               # Company → ticker resolution
 │       ├── event_extractor.py              # News event extraction
 │       ├── narrative_builder.py            # Narrative construction
 │       ├── news_fetcher.py                 # NewsAPI integration
+│       ├── market_intelligence.py          # Blueprint: /api/ticker/analysis/<ticker>
 │       ├── extract_events_job.py           # CLI event extraction
 │       ├── ingest_news_job.py              # CLI news ingestion
 │       ├── store_intel_job.py              # Intelligence storage
@@ -156,7 +163,7 @@ repo root/
 │   ├── layer4_measurement.py               # L4 validity gate, NDI, 5d return
 │   ├── layer4_persistence.py               # L4 streak tracking, stale-gap, state
 │   ├── layer4_classification.py            # L4 confidence, price pressure, risk
-│   ├── layer4_orchestrator.py              # L4 9-step pipeline, process_asset/batch
+│   ├── layer4_orchestrator.py              # L4 9-step pipeline + Layer4Orchestrator class
 │   └── fundamental/                        # Layer 5 — Fundamental Analysis
 │       ├── __init__.py
 │       ├── fundamental_engine.py           # Main engine, caching, NDI adjustment
@@ -170,7 +177,7 @@ repo root/
 │   ├── .env.development                    # API URL: http://localhost:10000
 │   ├── public/
 │   └── src/
-│       ├── App.tsx                         # Shell with sidebar + 8 views
+│       ├── App.tsx                         # Shell with sidebar + 5 routes
 │       ├── index.tsx
 │       ├── components/
 │       │   ├── styles.ts                   # Dark theme constants
@@ -179,15 +186,27 @@ repo root/
 │       │   ├── TickerAnalysis.tsx          # Per-ticker deep analysis
 │       │   ├── ExpandedRow.tsx             # Expanded signal detail
 │       │   ├── Layout.tsx                  # App layout shell
+│       │   ├── NDIGauge.tsx                # NDI gauge visualization
+│       │   ├── NDIThermometer.tsx          # NDI thermometer visualization
+│       │   ├── NDIVelocimeter.tsx          # SVG semi-circular gauge
+│       │   ├── NarrativePanel.tsx          # Narrative analysis panel
+│       │   ├── TickerFocusStrip.tsx        # Ticker focus/detail strip
 │       │   ├── EconomicFoundation.tsx      # Theory cards
 │       │   ├── Methodology.tsx             # NDI explanation
 │       │   ├── Architecture.tsx            # 6-layer diagram
+│       │   ├── Data.tsx                    # Data sources
+│       │   ├── DataRecovery.tsx            # Data recovery view
 │       │   ├── TechStack.tsx               # Technology breakdown
-│       │   └── About.tsx                   # Author bio
+│       │   ├── AnalysisContainer.tsx       # Analysis container
+│       │   ├── About.tsx                   # Author bio
+│       │   └── market-intelligence/        # Market Intelligence components
 │       └── pages/
 │           ├── Dashboard.tsx               # Signals dashboard
 │           ├── Intelligence.tsx            # Ticker analyzer
 │           ├── Data.tsx                    # Data sources
+│           ├── ScanTable.tsx               # Scan results
+│           ├── ExpandedRow.tsx             # Expanded signal detail
+│           ├── EconomicFoundation.tsx      # Economic foundation
 │           ├── About.tsx                   # About page
 │           └── Docs.tsx                    # Documentation
 │
@@ -201,16 +220,18 @@ repo root/
 │
 ├── config/                                 # Configuration
 │   ├── thresholds.py                       # Centralized thresholds (MIN_PRICE_HISTORY_DAYS, etc.)
-│   └── entity_aliases.json                 # Entity alias mappings
+│   └── __pycache__/
 │
-├── scripts/                                # Operations & Utilities (12 scripts)
+├── scripts/                                # Operations & Utilities (14 scripts)
 │   ├── demo.py                             # End-to-end synthetic demo (stdlib only)
 │   ├── simple_ndi.py                       # Simplified NDI signal generator
 │   ├── backtest_engine.py                  # NDI backtesting engine (pandas/numpy)
 │   ├── backtest_improved.py                # Enhanced backtesting
 │   ├── run_backtest_real.py                # Production backtest runner
+│   ├── run_backtest_real_fixed.py          # Fixed backtest runner
 │   ├── run_layer3_daily.py                # Daily Layer 3 run
 │   ├── run_layer3_historical.py           # Historical Layer 3 run
+│   ├── run_layer3_historical_fixed.py     # Fixed historical runner
 │   ├── run_layer3_pipeline.py             # Layer 3 pipeline
 │   ├── generate_signals_direct.py         # Direct signal generation
 │   ├── install_crontab.sh                  # Idempotent cron installer
@@ -230,6 +251,8 @@ repo root/
 │       └── test_integration.py             # Full system integration test (integration)
 │
 └── logs/                                   # Runtime logs (.gitignore)
+    ├── about.tsx
+    ├── app.log
     └── ingestion.log
 ```
 
@@ -239,7 +262,7 @@ repo root/
 
 ### Layer 1 — Data Ingestion (`ingestion/`)
 
-**5 modules**, all integration-tested (15 tests, 61 checks).
+**5 modules.**
 
 | Module | File | Responsibility |
 |--------|------|---------------|
@@ -277,7 +300,7 @@ repo root/
 
 ### Layer 3 — NLP Intelligence (`layers/`)
 
-**6 modules**, pure Python stdlib, 16 integration tests (100+ checks).
+**6 modules**, pure Python stdlib.
 
 | Module | Responsibility |
 |--------|---------------|
@@ -290,26 +313,37 @@ repo root/
 
 ### Layer 4 — Signal Generation (`layers/`)
 
-**5 modules**, 15 tests (80+ checks), 12-field output schema.
+**5 modules**, 12-field output schema.
 
 | Module | Responsibility |
 |--------|---------------|
 | `layer4_measurement.py` | NDI = `sentiment_zscore - momentum_zscore`. Validity gates check input completeness. 5-day return calculation |
 | `layer4_persistence.py` | `PersistenceTracker` manages consecutive-day threshold breaches. JSON file persistence with stale-gap detection (3-day max). Classifies into 4 regimes |
 | `layer4_classification.py` | Inverted-U confidence model (NDI 0.8–2.2 = max reliability). Price pressure classification. Risk escalation (only OVERHEATING_DIVERGENCE produces non-NORMAL risk). Attention text generation |
-| `layer4_orchestrator.py` | 9-step pipeline: validate → calculate NDI → compute 5d return → track persistence → classify regime → calculate confidence → boost by streak → determine risk → generate attention. Exports: `process_asset()`, `process_batch()`, `OUTPUT_FIELDS` |
+| `layer4_orchestrator.py` | 9-step pipeline: validate → calculate NDI → compute 5d return → track persistence → classify regime → calculate confidence → boost by streak → determine risk → generate attention. Exports: `process_asset()`, `process_batch()`, `OUTPUT_FIELDS`. Also contains `Layer4Orchestrator` class with LLM integration. |
 | `integration.py` | Consolidated L3→L4 entry points: `run_pipeline()`, `run_batch_pipeline()` |
 
 **Output schema (12 fields):**
 `ticker, date, ndi, ndi_delta, ndi_trend, regime, signal_state, confidence, price_modifier, persistence_days, risk_level, attention`
 
-**4 Regimes:**
+**4 Regimes (core L4):**
 | Regime | NDI Range | Description |
 |--------|-----------|-------------|
 | ALIGNED | \|NDI\| < 1.5 | Narrative matches price action |
 | ACCUMULATION_DIVERGENCE | NDI < -1.5 | Price stronger than narrative (undervalued) |
 | OVERHEATING_DIVERGENCE | NDI > 1.5 | Narrative stronger than price (overvalued) |
 | INSUFFICIENT_DATA | < 2 valid points | Not enough data |
+
+**7 Regimes (API `classify_regime`):**
+| Regime | NDI Range | Recommendation |
+|--------|-----------|---------------|
+| Extreme Overheating | NDI > 2.0 | SELL |
+| Overheating | NDI > 1.5 | REDUCE |
+| Watching | NDI > 0.5 | MONITOR |
+| Stable | NDI > -0.5 | HOLD |
+| Aligned | NDI > -1.5 | BUY |
+| Aligned negative | NDI > -2.0 | (buffer) |
+| Strong Undervalued | NDI ≤ -2.0 | STRONG_BUY |
 
 **3 Signal States:**
 - **Inactive**: No threshold breach
@@ -349,45 +383,152 @@ PRIMARY_LLM (env var) → FALLBACK_LLM (env var) → MOCK mode
 
 ### Flask API (`backend/app/main.py`)
 
-**14 endpoints**, CORS-enabled, rate-limited via Flask-Limiter:
+**889-line Flask application** with environment-driven `Config` class, CORS, rate limiting, JSON logging, and 14+ endpoints.
 
-| Endpoint | Method | Rate Limit | Data Source |
-|----------|--------|------------|-------------|
-| `/api/health` | GET | — | — |
-| `/api/version` | GET | — | — |
-| `/api/stats` | GET | — | PostgreSQL |
-| `/api/prices/<ticker>` | GET | 10/min | Finnhub → yfinance → Mock |
-| `/api/score/<ticker>` | GET | — | PostgreSQL |
-| `/api/classify` | POST | 30/min | EventClassifier |
-| `/api/analyze/<ticker>` | GET | 10/min | PostgreSQL + LLM |
-| `/api/analyze-llm/<ticker>` | GET | 10/min | LLM only |
-| `/api/signals-live` | GET | 30/min | Finnhub → yfinance → Mock |
-| `/api/signals-intel` | GET | — | PostgreSQL |
-| `/api/routes` | GET | — | — |
+#### Config Class
 
-**3-tier fallback chain for live data:**
-1. **Finnhub.io** — `get_stock_data_finnhub()` with 0.2s delay
-2. **yfinance** — `get_ticker_data_sync()` via yfinance library
-3. **Mock** — `generate_mock_data()` with 11 hardcoded tickers
+All configuration is driven by environment variables with sensible defaults:
 
-**Important note:** The live API path uses a simplified NDI formula (`0.5 + daily_return * 0.5`; `ndi = sentiment - momentum/100`) that differs from the canonical `sentiment_zscore - momentum_zscore` in Layer 4. This is a known architectural inconsistency.
+```python
+class Config:
+    DATABASE_URL              # PostgreSQL connection string
+    GOOGLE_API_KEY            # Gemini API key
+    GROQ_API_KEY              # Groq API key
+    CORS_ORIGINS              # Comma-separated allowed origins
+    REDIS_URL                 # Rate limiting backend (default: memory://)
+    PORT / HOST               # Server binding (default: 10000 / 0.0.0.0)
+    APP_VERSION               # "2026-07-07"
+    APP_ENV                   # "production"
+    APP_MODE                  # "REAL"
+    DEFAULT_TICKERS           # NVDA,AAPL,MSFT,TSLA,GOOGL,META,AMD,AMZN,JPM,KO
+    PRICE_HISTORY_LIMIT       # 60 days
+    MOMENTUM_PERIOD           # 20 days
+    NDI_CLAMP_MIN/MAX         # -3.0 / 3.0
+```
 
-**Structured logging:** JSON-formatted logs via `log_info()`/`log_error()` wrappers with `USE_JSON_LOGS` toggle.
+#### Regime Classification (API)
+
+The live API uses a 7-regime system with buy/sell recommendations:
+
+```python
+thresholds = {
+    'extreme_overheating': 2.0,   # → SELL
+    'overheating': 1.5,           # → REDUCE
+    'watching': 0.5,              # → MONITOR
+    'stable': -0.5,               # → HOLD
+    'aligned': -1.5,              # → BUY
+    'strong_undervalued': -2.0    # → STRONG_BUY
+}
+```
+
+All thresholds and labels are configurable via environment variables (`THRESHOLD_EXTREME_OVERHEATING`, `REGIME_OVERHEATING`, etc.).
+
+#### API Endpoints
+
+| Endpoint | Method | Rate Limit | Data Source | Description |
+|----------|--------|------------|-------------|-------------|
+| `/` | GET | — | — | API root with version, build, endpoints |
+| `/health` | GET | — | PostgreSQL | Health check with DB status |
+| `/api/prices` | GET | 10/min | yfinance | Historical prices for 1+ tickers |
+| `/api/signals` | GET | 30/min | yfinance | NDI signals for 1+ tickers |
+| `/api/analyze` | POST | 10/min | Gemini + Groq | LLM text analysis + event classification |
+| `/api/classify` | POST | 30/min | EventClassifier | Event type classification |
+| `/api/regimes` | GET | — | — | All regime definitions with examples |
+| `/api/tickers` | GET | — | yfinance | Default ticker list + search |
+| `/api/ticker-info` | GET | — | yfinance | Detailed ticker metadata |
+| `/api/market-intelligence` | GET | 5/min | yfinance + LLM | Sector/ticker market intelligence |
+| `/api/market-intelligence/trends` | GET | 5/min | yfinance | Market trends across top tickers |
+| `/api/ticker/analysis/<ticker>` | GET | — | PostgreSQL | Deep ticker analysis (Blueprint) |
+| `/api/test` | GET | — | — | Blueprint connectivity test |
+
+#### NDI Calculation (Live API)
+
+```python
+def calculate_ndi(closes):
+    daily_returns = [(closes[i] - closes[i-1]) / closes[i-1] ...]
+    sentiment_zscore = (latest_return - mean_returns) / std_returns
+    momentum_zscore  = (latest_momentum - mean_momentum) / std_momentum
+    ndi = sentiment_zscore - momentum_zscore
+    ndi = clamp(ndi, -3.0, 3.0)
+    return ndi, sentiment_zscore, momentum_zscore
+```
+
+This differs from the core L4 formula (`sentiment_zscore - momentum_zscore` using rolling 20-day z-scores from the offline pipeline).
+
+**3-tier fallback (removed):** The API previously used Finnhub.io → yfinance → Mock fallback chain. Now uses yfinance exclusively.
+
+**Structured logging:** JSON-formatted logs via `JSONFormatter` with timestamp, level, module, function, and line number.
+
+### Market Intelligence Blueprint (`backend/app/market_intelligence.py`)
+
+Registered at `/api` prefix via Flask Blueprint.
+
+#### `/api/ticker/analysis/<ticker>` — Deep Ticker Analysis
+
+Returns a comprehensive analysis including:
+
+```json
+{
+  "ticker": "NVDA",
+  "ndi": 0.85,
+  "statusLabel": "WATCHING",
+  "confidenceScore": 72.5,
+  "measuredMetrics": {
+    "sentiment": 0.03,
+    "momentum": -0.02,
+    "divergence": 0.85,
+    "sourcesCount": 12
+  },
+  "narrativeBreakdown": {
+    "consensusPercentage": 86,
+    "intensityPercentage": 67,
+    "dispersionValue": 0.05,
+    "mediaBias": { "centerBizPercentage": 60, ... }
+  },
+  "narrativeExhaustion": {
+    "status": "MEDIA",
+    "conditionsObservedCount": 1,
+    "conditionsDetails": [...]
+  },
+  "aiInterpretation": "NVDA: NDI 0.850, Régimen: WATCHING...",
+  "newsSummary": {
+    "items": [...],
+    "positiveCount": 0,
+    "negativeCount": 0,
+    "averageSentiment": 0.0
+  },
+  "relativeContext": {
+    "sectorName": "Technology",
+    "comparison": { ... },
+    "ranking": [
+      {"rank": 1, "ticker": "NVDA", "ndi": 0.85},
+      ...
+    ],
+    "insight": "NVDA: Divergencia de 0.850 entre narrativa y precio."
+  }
+}
+```
+
+#### `/api/test` — Blueprint Test
+
+Returns `{"status": "ok", "message": "Market Intelligence is working!"}`
 
 ### Layer 6 — Frontend (`frontend/`)
 
-**React 19 + TypeScript** app with 8 views, refactored from a 668-line monolith into focused components:
+**React 19 + TypeScript** app with 5 routes (Dashboard, Intelligence, Data, About, Docs), refactored into focused components and pages.
 
 | Component | Lines | Purpose |
 |-----------|-------|---------|
-| `App.tsx` | 77 | Shell with sidebar navigation |
-| `Dashboard.tsx` (components) | 298 | Live signals grid, KPI cards, NDI chart, ticker analyzer |
-| Other components | ~400 | ScanTable, TickerAnalysis, ExpandedRow, Layout |
-| Info pages | ~400 | EconomicFoundation, Methodology, Architecture, TechStack, About |
+| `App.tsx` | 76 | Shell with sidebar navigation |
+| `components/Dashboard.tsx` | 298 | Live signals grid, KPI cards, NDI chart |
+| Other components | ~500 | ScanTable, TickerAnalysis, ExpandedRow, Layout, NDIVelocimeter, NarrativePanel |
+| Pages | ~200 | Dashboard, Intelligence, Data, About, Docs |
 
 **Styling:** Shared `C` object from `styles.ts` — dark theme with 15+ color tokens. All components use inline style objects. Tailwind config and PostCSS config exist but are unused.
 
-**Data fetching:** Axios to `REACT_APP_API_URL` (default: localhost:10000). Falls back to static data when backend unreachable. 5-minute polling with error recovery.
+**Data fetching:** Axios to `REACT_APP_API_URL` (default: localhost:10000, production: `signaliq-l8mi.onrender.com`). Falls back to static data when backend unreachable. 5-minute polling with error recovery.
+
+**Setup proxy:** `frontend/src/setupProxy.js` proxies `/api` to `signaliq-l8mi.onrender.com` in development.
 
 **Standalone HTML dashboards** available in `web/`: `index.html` (dark institutional), `automatico.html` (automated), `test.html` (API test).
 
@@ -406,6 +547,12 @@ ThreadedConnectionPool(
 ```
 
 Exponential backoff retry (3 attempts). Used by `main.py` via `execute_query_one()` / `execute_query()`.
+
+### Auth (`auth.py`)
+
+Two decorators:
+- `require_api_key` — requires `X-API-Key` header (used by `/api/analyze`)
+- `require_api_key_optional` — logs warning if key missing but allows access (used by most endpoints)
 
 ### Event Classifier (`classification/event_classifier.py`)
 
@@ -449,6 +596,7 @@ MIN_PRICE_HISTORY_DAYS = 6
 | `PRIMARY_LLM` | LLM provider (gemini/glm/groq/mock) |
 | `FALLBACK_LLM` | Fallback provider |
 | `GROQ_API_KEY` | Groq API key |
+| `GOOGLE_API_KEY` | Gemini API key |
 | `GEMINI_API_KEY_1/2/3` | Gemini API keys (3 for redundancy) |
 | `GLM_API_KEY` | ZhipuAI GLM API key |
 | `FINNHUB_API_KEY` | Finnhub.io API key |
@@ -461,6 +609,11 @@ MIN_PRICE_HISTORY_DAYS = 6
 | `CORS_ORIGINS` | CORS allowed origins (comma-separated) |
 | `USE_JSON_LOGS` | Toggle JSON structured logging |
 | `ENVIRONMENT` | Runtime environment (test/prod) |
+| `TICKER_REGEX` | Ticker validation regex |
+| `MAX_TICKER_LEN` | Max ticker length (default: 10) |
+| `DEFAULT_TICKERS` | Comma-separated default ticker list |
+
+Plus 20+ threshold environment variables for regime classification labels, colors, and recommendations.
 
 **Note:** `load_dotenv()` is guarded by `ENVIRONMENT != 'test'` to prevent side effects during test imports.
 
@@ -500,7 +653,7 @@ pytest tests/pytest/ -v
 ### Code Quality
 
 - **No linter configured** — No ruff, black, flake8, or mypy
-- **No type hints** — Almost all Python code lacks annotations
+- **Minimal type hints** — Some modules have type annotations, but most lack them
 - **Mixed language** — Spanish and English used inconsistently
 
 ---
@@ -525,7 +678,7 @@ docker-compose up
 
 | Service | Platform | URL | Auto-deploy |
 |---------|----------|-----|-------------|
-| Frontend | Vercel | https://signaliq-zeta.vercel.app | From `main` branch |
+| Frontend | Vercel | https://signaliq-zeta-ten.vercel.app | From `main` branch |
 | Backend | Render | https://signaliq-l8mi.onrender.com | From `main` branch |
 
 ### Cron Jobs
@@ -564,6 +717,8 @@ python -m ingestion.orchestrator --type news --source reuters --dry-run
 | **ThreadedConnectionPool** | Efficient connection reuse with exponential backoff retry |
 | **JSON structured logging** | Machine-parseable logs for production observability |
 | **Pytest as single source of truth** | Replaced legacy test framework; compatible with CI/CD |
+| **Environment-driven Config class** | All API configuration via env vars with sensible defaults |
+| **Market Intelligence Blueprint** | Separate Flask Blueprint for organized route registration |
 
 ---
 
@@ -571,28 +726,34 @@ python -m ingestion.orchestrator --type news --source reuters --dry-run
 
 ### ✅ Completed
 - All 6 layers implemented and integrated
-- 22 blockers resolved across 6 refactoring rounds
+- 22+ blockers resolved across 6+ refactoring rounds
 - 8 tests pass with no external dependencies
 - All API keys removed from source code
-- Frontend refactored from monolith to 8 components
+- Frontend refactored from monolith to focused components
 - ~35% dead code removed, directory structure cleaned
 - Database schema completed with all 4 schemas
 - Rate limiting with Flask-Limiter
 - Architecture invariants enforced by tests
 - Centralized thresholds in `config/thresholds.py`
+- Environment-driven `Config` class in API
+- JSON structured logging throughout API
+- Market Intelligence endpoint with deep ticker analysis
+- Flask Blueprint for organized routing
+- Cross-origin CORS support for Vercel deployment
 
 ### 🔶 Known Issues
-- Triplicate NDI formula in live API path
+- Triplicate NDI formula in live API path vs core L4 vs frontend
+- 7 regimes (API) vs 4 regimes (core L4) — different thresholds and semantics
 - API keys in git history (need `git filter-repo`)
-- CORS wide open
-- `time.sleep(0.2)` blocks Flask workers
-- Connection pool never closed on shutdown
+- CORS origins still need maintenance
+- `print()` in production modules (`layer4_orchestrator.py`)
+- Connection pool lifecycle management
 - ~120 hardcoded values remain
-- `print()` in production modules
 - No CI/CD pipeline
 - Zero frontend tests
-- No type hints or linter
+- Minimal type hints or linter
 - Mixed language (ES/EN)
+- Market Intelligence endpoint has some hardcoded values
 
 ### 🚀 Future Directions
 - CI/CD with GitHub Actions
@@ -601,6 +762,8 @@ python -m ingestion.orchestrator --type news --source reuters --dry-run
 - Type hints + linter (ruff)
 - Multi-replica deployment
 - Performance benchmarking
+- NDI formula unification across all layers
+- Regime model reconciliation (core L4 ↔ API ↔ frontend)
 
 ---
 
@@ -632,14 +795,17 @@ pytest tests/pytest/ -m "not integration" -v
 pytest tests/pytest/ -m integration -v
 pytest tests/pytest/ -v
 
-# Layer 5 — fundamental analysis
-python -m tests.test_fundamental_engine
-
 # Backend API server
-python -m app.main                   # From backend/
+python backend/app/main.py
 
 # Frontend
 cd frontend && npm start
+
+# Frontend build
+cd frontend && npm run build
+
+# Frontend deploy
+cd frontend && vercel --prod --force
 
 # End-to-end demo
 python scripts/demo.py
@@ -667,13 +833,14 @@ docker-compose up
 ## Notes
 
 - `config/thresholds.py` is the single source of truth for all production thresholds
-- `config/entity_aliases.json` is consumed by Layer 3 EntityResolver
 - `layers/lm_lexicon.py` is the canonical Loughran-McDonald lexicon (558 words, 6 categories)
 - `layers/__init__.py` exports `score_text`, `net_sentiment`, `run_pipeline`, `run_batch_pipeline`
 - `layers/llm_router.py` provides the `LLMRouter` singleton — set `PRIMARY_LLM` in `.env`
 - `layers/system_config.py` exposes `DATA_DIR`, `db_url`, and all LLM provider settings
 - `calculate_narrative_divergence_index()` is the canonical NDI function in `layer4_measurement.py`
-- `calculate_ndi` is maintained as a backward-compatibility alias
+- The live API `calculate_ndi()` in `main.py` uses a different formula (recent return z-score vs momentum period z-score) — known inconsistency
+- `classify_regime()` in `main.py` supports 7 configurable regimes; core L4 uses 4 academic regimes
+- The Market Intelligence Blueprint (`market_intelligence.py`) registers at `/api` prefix
 - No `sys.exit()` in library code — exceptions propagate for graceful handling
 - `load_dotenv()` guarded by `ENVIRONMENT != 'test'` — no import-time side effects
 - Layer 1 installs no cron jobs automatically — run `scripts/install_crontab.sh`
@@ -681,4 +848,5 @@ docker-compose up
 - Architecture invariants enforced by `test_architecture.py` (4 tests)
 - Fundamental engine requires `numpy`; all other layers remain stdlib-only
 - `docker-compose.yml` reads API keys from `.env` via `${VAR:-}` references
-```
+- Production frontend URL: `https://signaliq-zeta-ten.vercel.app`
+- Production API URL: `https://signaliq-l8mi.onrender.com`

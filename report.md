@@ -2,7 +2,7 @@
 
 > **Author:** Daniel Canedo (ML Engineer at Anyone AI, MSc. Economics — Yokohama National University)
 > **Repository:** [github.com/danacioDS/SignalIQ](https://github.com/danacioDS/SignalIQ)
-> **Generated:** June 24, 2026
+> **Generated:** July 7, 2026
 
 ---
 
@@ -16,7 +16,7 @@ NDI = sentiment_zscore − momentum_zscore
 
 The project is architecturally complete across 6 layers (Ingestion → Database → NLP → Signal Generation → Fundamental Analysis → Frontend), with a Flask API backend and a React TypeScript dashboard deployed to production on Vercel + Render. Core analytics layers (3–4) are pure Python stdlib with zero external dependencies — a deliberate design choice for stability and portability.
 
-**Status:** All layers implemented. 22 blockers resolved across 6 refactoring rounds. ~35% dead code removed. 13 automated tests pass. Production deployment active.
+**Status:** All layers implemented. 22+ blockers resolved across 6+ refactoring rounds. ~35% dead code removed. 13 automated tests pass. Production deployment active. Market Intelligence endpoint added with deep ticker analysis.
 
 ---
 
@@ -42,8 +42,8 @@ Two paths exist:
    `Layer 1 → Layer 2 (DB) → Layer 3 → Layer 4 → Layer 5 → signals`
 
 2. **Live API Path (online):**
-   `Finnhub → yfinance → Mock (3-tier fallback) → simplified NDI → JSON`
-   *Note: Uses a different, simplified NDI formula — known architectural inconsistency.*
+   `yfinance → calculated NDI (live) → JSON response`
+   *Note: The live API now uses yfinance exclusively (no Finnhub). The NDI calculation uses a slightly different approach (recent return z-score vs momentum period z-score) — known architectural inconsistency.*
 
 ### 2.3 Tech Stack
 
@@ -53,7 +53,7 @@ Two paths exist:
 | Frontend | React 19, TypeScript 4.9, Recharts 3.8, Axios 1.17 |
 | Database | PostgreSQL (4 schemas) |
 | LLM | Google Gemini 2.0-flash, Groq (Qwen/Llama), GLM 4.7-flash |
-| Data Sources | Yahoo Finance, Finnhub.io, 6 RSS feeds (Reuters, AP, CNBC, etc.) |
+| Data Sources | Yahoo Finance (yfinance 0.2), NewsAPI, 6 RSS feeds (Reuters, AP, CNBC, etc.) |
 | Infrastructure | Docker, Vercel (frontend), Render (backend + DB) |
 
 ---
@@ -85,10 +85,10 @@ Two paths exist:
 
 ### Layer 4 — Signal Generation (`layers/`)
 
-- **Modules:** `layer4_measurement.py` (NDI formula), `layer4_persistence.py` (streak tracking), `layer4_classification.py` (confidence/risk), `layer4_orchestrator.py` (9-step pipeline)
+- **Modules:** `layer4_measurement.py` (NDI formula), `layer4_persistence.py` (streak tracking), `layer4_classification.py` (confidence/risk), `layer4_orchestrator.py` (9-step pipeline + `Layer4Orchestrator` class with LLM integration)
 - **Output schema (12 fields):** ticker, date, ndi, ndi_delta, ndi_trend, regime, signal_state, confidence, price_modifier, persistence_days, risk_level, attention
 
-#### Regime Classification
+#### Regime Classification (Core L4 — 4 regimes)
 
 | Regime | NDI Range | Description |
 |--------|-----------|-------------|
@@ -123,22 +123,40 @@ Two paths exist:
 - **Key components:** `NDIVelocimeter` (SVG semi-circular gauge), `NarrativePanel`, `TickerFocusStrip`, `useSignalAnalysis` hook
 - **Dark theme** with shared `C` style constants (Tailwind installed but unused)
 - **Data fetching:** Axios → `signaliq-api.onrender.com`, 5-minute polling, static fallback
-- **Deployed on Vercel:** [signaliq-zeta.vercel.app](https://signaliq-zeta.vercel.app)
+- **Deployed on Vercel:** [signaliq-zeta-ten.vercel.app](https://signaliq-zeta-ten.vercel.app)
 
 ### Flask API (`backend/app/`)
 
-- **14 endpoints**, CORS-enabled, rate-limited (Flask-Limiter)
-- **Key endpoints:** `/api/health`, `/api/prices/<ticker>`, `/api/signals-live`, `/api/analyze-llm/<ticker>`, `/api/classify`
-- **3-tier fallback:** Finnhub → yfinance → Mock (with `time.sleep(0.2)` between tiers)
-- **JSON structured logging**
+- **14+ endpoints**, CORS-enabled, rate-limited (Flask-Limiter)
+- **Key endpoints:**
+  | Endpoint | Method | Description |
+  |----------|--------|-------------|
+  | `/` | GET | API root with version/environment info |
+  | `/health` | GET | Health check with DB status |
+  | `/api/prices` | GET | Historical prices for tickers (yfinance) |
+  | `/api/signals` | GET | NDI signals for tickers |
+  | `/api/analyze` | POST | LLM-based text analysis |
+  | `/api/classify` | POST | Event classification |
+  | `/api/regimes` | GET | All regime definitions |
+  | `/api/tickers` | GET | Default ticker list + search |
+  | `/api/ticker-info` | GET | Detailed ticker info from yfinance |
+  | `/api/market-intelligence` | GET | Sector/ticker market intelligence |
+  | `/api/market-intelligence/trends` | GET | Market trends across top tickers |
+  | `/api/ticker/analysis/<ticker>` | GET | Deep ticker analysis (Market Intelligence) |
+  | `/api/test` | GET | Blueprint test endpoint |
+
+- **Data source:** yfinance exclusively (Finnhub tier removed, mock fallback removed)
+- **Regime classification (API):** 7 regimes — Extreme Overheating, Overheating, Watching, Stable, Aligned, (Aligned negative), Strong Undervalued
+- **JSON structured logging** with `JSONFormatter`
 - **Database:** ThreadedConnectionPool (min=1, max=10, exponential backoff retry)
-- **LLM integration:** Groq (Qwen/Llama) for ticker analysis; Gemini for event classification
+- **LLM integration:** Groq (Qwen/Llama) for ticker analysis; Gemini for text analysis and market summaries
+- **Config class:** Environment-driven configuration with sensible defaults
 
 ---
 
 ## 4. Development Methodology
 
-Based on `workflow.md` and git history (80+ commits):
+Based on `workflow.md` and git history (90+ commits):
 
 The project follows a structured **Phase 0–6 methodology**:
 - **Phase 0:** Conceptual foundation (pitch, economics, statistics, strategy)
@@ -155,8 +173,9 @@ Actual build order was **bottom-up**: Layer 4 (signal math) was built first to v
 - Feature-driven with frequent deployment (deploy-to-test strategy)
 - Conventional Commits-like prefixes (`feat:`, `fix:`, `refactor:`, `docs:`)
 - Direct-to-main commits (no PR workflow)
-- Rapid iteration on production issues (CORS, DB connections, API fallbacks)
+- Rapid iteration on production issues (CORS, DB connections, blueprints)
 - 6+ refactoring rounds with ~35% dead code removal
+- Recent focus: Market Intelligence endpoint, CORS hardening, blueprint organization
 
 ---
 
@@ -200,6 +219,8 @@ Actual build order was **bottom-up**: Layer 4 (signal math) was built first to v
 - Any ingestion modules
 - Any frontend code
 - Any scripts
+- Market Intelligence endpoint
+- New API endpoints (`/api/regimes`, `/api/tickers`, `/api/ticker-info`, `/api/market-intelligence`)
 
 ---
 
@@ -209,21 +230,21 @@ Actual build order was **bottom-up**: Layer 4 (signal math) was built first to v
 
 | Issue | Details |
 |-------|---------|
-| **Triplicate NDI formula** | Three different NDI implementations: (1) `sentiment_zscore - momentum_zscore` (core L4), (2) `0.5 + daily_return*0.5 - momentum/100` (live API), (3) frontend `useSignalAnalysis` custom interpretation. These produce different values. |
+| **Triplicate NDI formula** | Three different NDI implementations: (1) `sentiment_zscore - momentum_zscore` (core L4), (2) `calculate_ndi()` in API (recent return z-score minus momentum period z-score), (3) frontend `useSignalAnalysis` custom interpretation. These produce different values. |
 | **API keys in git history** | `.env` contains live Groq, Google, Finnhub, NewsAPI keys committed to history. Requires `git filter-repo` for remediation. |
-| **Production DB credentials exposed** | `DATABASE_URL=postgresql://signaliq_user:7QwQbmPXrNJBdXdy0hwuu4es0hzSS0rw@dpg-d8io1osm0tmc73bqfosg-a.oregon-postgres.render.com/signaliq_db` in committed `.env` |
+| **Production DB credentials exposed** | `DATABASE_URL` with credentials in committed `.env` |
 
 ### High
 
 | Issue | Details |
 |-------|---------|
-| **CORS wide open** | Backend allows specific origins; frontend hardcodes `signaliq-api.onrender.com` — mismatch risk |
-| **No authentication** | All 14 API endpoints publicly accessible with no API key or auth |
-| **`print()` in production** | `llm_router.py`, `layer4_orchestrator.py`, `main.py` use `print()` instead of logging |
-| **`time.sleep()` in Flask** | `time.sleep(0.2/1.0)` in request handlers blocks worker threads |
+| **7 regimes (API) vs 4 regimes (core L4)** | `classify_regime()` in `main.py` returns 7 regimes with buy/sell recommendations; core L4 uses 4 academic regimes. Different thresholds and semantics. |
+| **No authentication** | All API endpoints publicly accessible (`require_api_key_optional` is a no-op) |
+| **`print()` in production** | `layer4_orchestrator.py` uses `print()` instead of logging |
+| **`time.sleep()` in production** | `db.py` retry logic uses `time.sleep()` (acceptable for retries, but blocks workers during retries) |
 | **~120 hardcoded values** | Ticker lists, thresholds, sector maps duplicated across files |
-| **Frontend/backend regime mismatch** | 7 regimes on frontend vs 4 in backend — different thresholds |
-| **No linter or type hints** | No ruff, black, flake8, mypy; essentially zero type annotations |
+| **Frontend/backend regime mismatch** | 7 regimes on API vs 4 in backend core — different thresholds and semantics |
+| **No linter or type hints** | No ruff, black, flake8; minimal type annotations |
 | **No CI/CD** | No GitHub Actions, no automated test execution |
 
 ### Medium
@@ -231,11 +252,12 @@ Actual build order was **bottom-up**: Layer 4 (signal math) was built first to v
 | Issue | Details |
 |-------|---------|
 | **Mixed language (ES/EN)** | Comments, logs, error messages in Spanish and English |
-| **Connection pool never closed** | `atexit` handler won't fire on SIGTERM |
+| **Connection pool lifecycle** | `atexit` handler won't fire on SIGTERM in production |
 | **Zero frontend tests** | React app has no test coverage |
 | **Missing GLM dep** | `zhipuai` import in `llm_router.py` not in any requirements file |
-| **Dead code** | `write_headline_debug()`, unused CORS env var, duplicate imports |
+| **Dead code** | `write_headline_debug()`, unused CORS env var, duplicate imports in main.py |
 | **`load_dotenv()` guard** | `ENVIRONMENT != 'test'` check but env var never set to `test` |
+| **Market Intelligence hardcoded values** | `mediaBias` has hardcoded 60/20/20 split, sector hardcoded as Technology |
 
 ---
 
@@ -250,9 +272,10 @@ Actual build order was **bottom-up**: Layer 4 (signal math) was built first to v
    - Singletons for config, LLM router, orchestrator
    - Idempotent DDL for safe migration re-execution
 4. **Architecture invariants enforced by automated tests** — prevents regression in fundamental design constraints
-5. **Centralized configuration** via `config/thresholds.py` and `SignalIQConfig` singleton
+5. **Centralized configuration** via `Config` class (environment-driven) and `config/thresholds.py`
 6. **Practical deployment** — full Docker support, cron-based ingestion, Vercel + Render production setup
 7. **Backtesting framework** included (`scripts/backtest_engine.py`) with Sharpe/Calmar/drawdown metrics
+8. **Market Intelligence endpoint** — deep ticker analysis with narrative breakdown, exhaustion detection, and ranking
 
 ---
 
@@ -266,7 +289,7 @@ Actual build order was **bottom-up**: Layer 4 (signal math) was built first to v
 
 ### Short-Term (Quality)
 5. Reconcile the three NDI formula implementations — pick one canonical formula and enforce it
-6. Align frontend regime classification (7 regimes) with backend (4 regimes)
+6. Align frontend regime classification with backend — decide on 4 vs 7 regimes
 7. Add type hints and configure ruff for linting
 8. Set up GitHub Actions CI with automated test execution
 
@@ -274,11 +297,11 @@ Actual build order was **bottom-up**: Layer 4 (signal math) was built first to v
 9. Add tests for Layer 3 (sentiment, momentum, entity resolution, orchestrator)
 10. Add tests for Layer 4 (classification, persistence, measurement)
 11. Add frontend tests (Jest + React Testing Library)
-12. Add integration tests for all API endpoints
+12. Add integration tests for all API endpoints, especially new Market Intelligence endpoints
 
 ### Long-Term (Infrastructure)
-13. Replace `time.sleep()` with async task queue (Celery + Redis)
-14. Implement proper connection pool lifecycle management (graceful shutdown)
+13. Replace blocking operations with async task queue (Celery + Redis)
+14. Implement proper connection pool lifecycle management (graceful shutdown via signals)
 15. Add API key authentication for external API access
 16. Consolidate hardcoded values into centralized configuration
 17. Extract all LLM-related code behind a clean interface for easier provider swapping
@@ -292,15 +315,17 @@ Actual build order was **bottom-up**: Layer 4 (signal math) was built first to v
 | Python modules | ~40 |
 | SQL migration files | 6 |
 | TypeScript/React components | ~20 |
-| API endpoints | 14 |
+| API endpoints | 14+ |
 | Database tables | 10 |
 | Automated tests | 13 |
-| Git commits | 80+ |
+| Git commits | 90+ |
 | LLM providers supported | 4 |
 | News sources ingested | 6 |
-| Tracked assets | 5 |
+| Tracked assets (Layer 1) | 5 |
+| API tracked assets | 10 (NVDA, AAPL, MSFT, TSLA, GOOGL, META, AMD, AMZN, JPM, KO) |
 | External Python dependencies | 8 |
-| NDI regimes (backend) | 4 |
+| NDI regimes (core L4) | 4 |
+| NDI regimes (API) | 7 |
 | NDI regimes (frontend) | 7 |
 | Estimated hardcoded values | ~120 |
 
@@ -310,9 +335,11 @@ Actual build order was **bottom-up**: Layer 4 (signal math) was built first to v
 
 SignalIQ is a functionally complete, production-deployed market intelligence system with a well-architected 6-layer design. The core analytics pipeline (Layers 3–4) demonstrates sophisticated design in its stdlib-only approach, two-phase commit for look-ahead bias prevention, and inverted-U confidence modeling.
 
-However, significant technical debt exists: the triplicate NDI formula is an architectural inconsistency that undermines the system's analytical integrity, API keys and database credentials are exposed in git history (a critical security concern), and test coverage is sparse outside of smoke tests.
+Recent development has focused on the Market Intelligence feature — a deep ticker analysis endpoint that combines NDI signals with narrative breakdown, exhaustion detection, and sector ranking. The API has been refactored with a proper `Config` class and improved logging.
 
-The project would benefit most from: (1) immediate credential remediation, (2) NDI formula unification, and (3) expanded test coverage before adding new features.
+However, significant technical debt remains: the triplicate NDI formula creates an architectural inconsistency that undermines analytical integrity, API keys and database credentials are exposed in git history (a critical security concern), test coverage is sparse outside of smoke tests, and there is a growing divergence between the core L4 regime model (4 regimes) and the live API (7 regimes with buy/sell recommendations).
+
+The project would benefit most from: (1) immediate credential remediation, (2) NDI formula unification, (3) regime model reconciliation between core/API/frontend, and (4) expanded test coverage before adding new features.
 
 ---
 
