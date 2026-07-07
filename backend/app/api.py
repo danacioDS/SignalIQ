@@ -1,10 +1,11 @@
 """
 SignalIQ API - SOLO YFINANCE - SIN BASE DE DATOS
-Este archivo es el punto de entrada para Render
+Con mejor manejo de errores para Yahoo Finance
 """
 
 import os
 import logging
+import time
 from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -79,6 +80,26 @@ def classify_regime(ndi):
     else:
         return {'regime': 'CAPITULATION', 'color': 'blue', 'label': 'ACCUMULATE'}
 
+def get_stock_data(ticker, retries=3):
+    """Obtiene datos de yfinance con reintentos"""
+    for attempt in range(retries):
+        try:
+            logger.info(f"📊 Intentando {ticker} (intento {attempt+1}/{retries})")
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period="60d")
+            
+            if not hist.empty:
+                return hist
+            
+            if attempt < retries - 1:
+                time.sleep(1)
+        except Exception as e:
+            logger.warning(f"⚠️ Error en intento {attempt+1}: {str(e)}")
+            if attempt < retries - 1:
+                time.sleep(2)
+    
+    return None
+
 # ============================================================
 # RUTAS
 # ============================================================
@@ -109,19 +130,31 @@ def ticker_analysis(ticker):
         ticker = ticker.upper()
         logger.info(f"📊 Analizando {ticker}")
         
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period="60d")
+        # Obtener datos con reintentos
+        hist = get_stock_data(ticker)
         
-        if hist.empty:
-            return jsonify({'error': f'No data for {ticker}'}), 404
+        if hist is None or hist.empty:
+            logger.error(f"❌ No se pudieron obtener datos para {ticker}")
+            return jsonify({
+                'error': f'No se pudieron obtener datos para {ticker}',
+                'ticker': ticker,
+                'suggestion': 'Intenta con otro ticker o más tarde'
+            }), 404
         
         closes = hist['Close'].tolist()
         ndi, sentiment, momentum = calculate_ndi(closes)
         regime = classify_regime(ndi)
         
-        info = stock.info
+        info = {}
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+        except:
+            pass
+        
         company_name = info.get('longName', info.get('shortName', ticker))
         sector = info.get('sector', 'Unknown')
+        current_price = closes[-1] if closes else 0
         
         response = {
             'ticker': ticker,
