@@ -2,7 +2,6 @@
 SignalIQ API - Con noticias reales
 """
 import os
-import sys
 import logging
 from datetime import datetime, timezone
 from flask import Flask, jsonify, request
@@ -10,10 +9,9 @@ from flask_cors import CORS
 import yfinance as yf
 import numpy as np
 
-
-# Opción 1: Usar sys.path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Importación directa (layers ahora está en app/)
 from layers.layer4_measurement import calculate_narrative_divergence_index
+from news_pipeline import process_news_for_ticker
 
 app = Flask(__name__)
 CORS(app, origins=[
