@@ -1,19 +1,13 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copiar requirements y instalar dependencias
-COPY backend/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar el código del backend
-COPY backend/ .
+COPY . .
 
-# Variables de entorno
 ENV PORT=10000
-ENV PYTHONUNBUFFERED=1
 
-EXPOSE 10000
-
-# Comando para iniciar la aplicación
-CMD ["python", "-m", "app.main"]
+# Usar el nuevo archivo api.py
+CMD ["python", "-m", "app.api"]
