@@ -34,13 +34,11 @@ def calculate_ndi(closes):
     if len(closes) < 2:
         return 0.0, 0.0, 0.0
     
-    # Returns diarios
     daily_returns = []
     for i in range(1, len(closes)):
         if closes[i-1] > 0:
             daily_returns.append((closes[i] - closes[i-1]) / closes[i-1])
     
-    # Sentiment Z-Score
     if len(daily_returns) >= 2:
         mean_ret = np.mean(daily_returns)
         std_ret = np.std(daily_returns)
@@ -48,7 +46,6 @@ def calculate_ndi(closes):
     else:
         sentiment_zscore = 0.0
     
-    # Momentum Z-Score (ventana 20 días)
     momentum_period = 20
     if len(closes) >= momentum_period:
         momentum_returns = []
@@ -100,6 +97,7 @@ def root():
     })
 
 @app.route('/health')
+@app.route('/api/health')
 def health():
     return jsonify({
         'status': 'healthy',
@@ -110,24 +108,20 @@ def health():
 
 @app.route('/api/ticker/analysis/<ticker>')
 def ticker_analysis(ticker):
-    """Análisis completo usando SOLO yfinance"""
     try:
         ticker = ticker.upper()
         logger.info(f"📊 Analizando {ticker}")
         
-        # Obtener datos de yfinance
         stock = yf.Ticker(ticker)
         hist = stock.history(period="60d")
         
         if hist.empty:
             return jsonify({'error': f'No data for {ticker}'}), 404
         
-        # Calcular NDI
         closes = hist['Close'].tolist()
         ndi, sentiment, momentum = calculate_ndi(closes)
         regime = classify_regime(ndi)
         
-        # Información de la empresa
         info = stock.info
         company_name = info.get('longName', info.get('shortName', ticker))
         sector = info.get('sector', 'Unknown')
