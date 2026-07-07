@@ -2,3 +2,5 @@ Flask==3.0.3
 Flask-CORS==4.0.1
 yfinance==0.2.36
 numpy==1.26.4
+feedparser==6.0.10
+requests==2.31.0
