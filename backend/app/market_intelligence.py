@@ -3,9 +3,10 @@ from datetime import datetime
 import numpy as np
 from app.db import get_connection, put_connection
 
-market_intel_bp = Blueprint('market_intel', __name__)
+# ✅ Blueprint con url_prefix para que todas las rutas comiencen con /api
+market_intel_bp = Blueprint('market_intel', __name__, url_prefix='/api')
 
-@market_intel_bp.route('/api/ticker/analysis/<ticker>', methods=['GET'])
+@market_intel_bp.route('/ticker/analysis/<ticker>', methods=['GET'])
 def get_ticker_analysis(ticker):
     """Market Intelligence - Análisis profundo del ticker"""
     ticker = ticker.strip().upper()
@@ -15,15 +16,9 @@ def get_ticker_analysis(ticker):
         conn = get_connection()
         cur = conn.cursor()
         
-        # ============================================================
-        # 1. OBTENER SEÑAL DE LAYER 4
-        # ============================================================
+        # 1. Obtener señal de Layer 4
         cur.execute("""
-            SELECT 
-                ndi,
-                regime,
-                confidence,
-                signal_date
+            SELECT ndi, regime, confidence, signal_date
             FROM layer4.signals
             WHERE ticker = %s
             ORDER BY signal_date DESC
@@ -36,12 +31,9 @@ def get_ticker_analysis(ticker):
         
         ndi, regime, confidence, signal_date = row
         
-        # ============================================================
-        # 2. OBTENER PRECIO ACTUAL
-        # ============================================================
+        # 2. Obtener precio actual
         cur.execute("""
-            SELECT close
-            FROM prices
+            SELECT close FROM prices
             WHERE ticker = %s
             ORDER BY price_date DESC
             LIMIT 1
@@ -49,13 +41,9 @@ def get_ticker_analysis(ticker):
         price_row = cur.fetchone()
         price = price_row[0] if price_row else 0
         
-        # ============================================================
-        # 3. OBTENER SENTIMENT Y MOMENTUM DESDE LA TABLA prices
-        # ============================================================
-        # Usamos los últimos 20 días para calcular momentum y sentimiento
+        # 3. Calcular sentiment y momentum desde prices
         cur.execute("""
-            SELECT close
-            FROM prices
+            SELECT close FROM prices
             WHERE ticker = %s
             ORDER BY price_date DESC
             LIMIT 20
@@ -64,32 +52,24 @@ def get_ticker_analysis(ticker):
         
         if price_rows and len(price_rows) >= 2:
             closes = [float(r[0]) for r in reversed(price_rows)]
-            # Sentiment: retorno diario (simplificado)
             sentiment = (closes[-1] - closes[-2]) / closes[-2] if closes[-2] > 0 else 0
-            # Momentum: retorno de 20 días
             momentum = (closes[-1] - closes[0]) / closes[0] if closes[0] > 0 else 0
         else:
             sentiment = 0
             momentum = 0
         
-        # ============================================================
-        # 4. OBTENER FUENTES DE NOTICIAS
-        # ============================================================
+        # 4. Obtener fuentes de noticias
         cur.execute("""
             SELECT source, COUNT(*) as count
             FROM headlines
-            WHERE ticker = %s
-            AND created_at >= NOW() - INTERVAL '7 days'
-            GROUP BY source
-            ORDER BY count DESC
+            WHERE ticker = %s AND created_at >= NOW() - INTERVAL '7 days'
+            GROUP BY source ORDER BY count DESC
         """, (ticker,))
         sources_rows = cur.fetchall()
         sources_count = sum(row[1] for row in sources_rows) if sources_rows else 0
         unique_sources = len(sources_rows)
         
-        # ============================================================
-        # 5. OBTENER NOTICIAS RECIENTES
-        # ============================================================
+        # 5. Obtener noticias recientes
         cur.execute("""
             SELECT source, headline, created_at
             FROM headlines
@@ -99,20 +79,15 @@ def get_ticker_analysis(ticker):
         """, (ticker,))
         news_rows = cur.fetchall()
         
-        # ============================================================
-        # 6. CALCULAR MÉTRICAS NARRATIVAS
-        # ============================================================
+        # 6. Calcular métricas narrativas
         consensus_pct = min(95, int(50 + (confidence or 50) * 0.5))
         intensity_pct = min(90, int(20 + unique_sources * 3))
         dispersion = abs(sentiment - momentum) if sentiment and momentum else 0.5
         
-        # ============================================================
-        # 7. NARRATIVE EXHAUSTION
-        # ============================================================
+        # 7. Narrative Exhaustion
         conditions_met = 0
         conditions_details = []
         
-        # Condición 1: Divergencia sentiment vs momentum
         if sentiment and momentum and abs(sentiment - momentum) > 0.1:
             conditions_met += 1
             conditions_details.append({
@@ -127,7 +102,6 @@ def get_ticker_analysis(ticker):
                 'isMet': False
             })
         
-        # Condición 2: Alta cobertura mediática
         if unique_sources > 5:
             conditions_met += 1
             conditions_details.append({
@@ -142,7 +116,6 @@ def get_ticker_analysis(ticker):
                 'isMet': False
             })
         
-        # Condición 3: Confianza alta
         if confidence and confidence > 70:
             conditions_met += 1
             conditions_details.append({
@@ -160,9 +133,7 @@ def get_ticker_analysis(ticker):
         exhaustion_map = {3: 'CRÍTICA', 2: 'ALTA', 1: 'MEDIA', 0: 'BAJA'}
         exhaustion_status = exhaustion_map.get(conditions_met, 'BAJA')
         
-        # ============================================================
-        # 8. RANKING REAL
-        # ============================================================
+        # 8. Ranking
         cur.execute("""
             SELECT ticker, ndi
             FROM layer4.signals
@@ -179,9 +150,7 @@ def get_ticker_analysis(ticker):
             for i, r in enumerate(ranking_rows)
         ]
         
-        # ============================================================
-        # 9. RESPUESTA
-        # ============================================================
+        # 9. Respuesta
         response = {
             'ticker': ticker,
             'ndi': float(ndi) if ndi else 0,
@@ -254,6 +223,7 @@ def get_ticker_analysis(ticker):
         if conn:
             put_connection(conn)
 
+# Endpoint de prueba
 @market_intel_bp.route('/test', methods=['GET'])
 def test_endpoint():
     return jsonify({'status': 'ok', 'message': 'Market Intelligence is working!'})
