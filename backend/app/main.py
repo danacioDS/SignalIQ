@@ -187,3 +187,4 @@ if __name__ == '__main__':
     logger.info(f"🚀 SignalIQ API en puerto {port}")
     logger.info("📊 Usando yfinance + noticias reales")
     app.run(host='0.0.0.0', port=port, debug=False)
+# Forzar cambio para deploy
