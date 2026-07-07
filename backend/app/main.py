@@ -10,9 +10,14 @@ from flask_cors import CORS
 import yfinance as yf
 import numpy as np
 
-# Agregar path para importar scripts
-sys.path.append('/home/daniel/repo_lab/SignalIQ')
+# Agregar path para importar scripts (funciona en local y en Render)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from scripts.news_pipeline import process_news_for_ticker
+
+
+
+
 from layers.layer4_measurement import calculate_narrative_divergence_index
 
 app = Flask(__name__)
