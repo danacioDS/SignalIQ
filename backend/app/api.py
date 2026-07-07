@@ -1,16 +1,21 @@
 """
-SignalIQ API - SOLO YFINANCE - SIN BASE DE DATOS
-Con mejor manejo de errores para Yahoo Finance
+SignalIQ API - YFINANCE CON USER-AGENT REAL
 """
 
 import os
 import logging
 import time
+import requests
 from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import yfinance as yf
 import numpy as np
+
+# Configurar User-Agent para evitar bloqueos
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+}
 
 app = Flask(__name__)
 
@@ -80,24 +85,34 @@ def classify_regime(ndi):
     else:
         return {'regime': 'CAPITULATION', 'color': 'blue', 'label': 'ACCUMULATE'}
 
-def get_stock_data(ticker, retries=3):
-    """Obtiene datos de yfinance con reintentos"""
+def get_stock_data(ticker, retries=5):
+    """Obtiene datos de yfinance con User-Agent y reintentos"""
     for attempt in range(retries):
         try:
             logger.info(f"📊 Intentando {ticker} (intento {attempt+1}/{retries})")
+            
+            # Usar yfinance con User-Agent
             stock = yf.Ticker(ticker)
+            
+            # Configurar sesión con headers
+            session = requests.Session()
+            session.headers.update(headers)
+            
+            # Intentar obtener datos
             hist = stock.history(period="60d")
             
             if not hist.empty:
+                logger.info(f"✅ Datos obtenidos para {ticker}")
                 return hist
             
-            if attempt < retries - 1:
-                time.sleep(1)
+            logger.warning(f"⚠️ No hay datos para {ticker}, intento {attempt+1}")
+            time.sleep(2 ** attempt)  # Backoff exponencial
+            
         except Exception as e:
-            logger.warning(f"⚠️ Error en intento {attempt+1}: {str(e)}")
-            if attempt < retries - 1:
-                time.sleep(2)
+            logger.warning(f"⚠️ Error: {e}, intento {attempt+1}")
+            time.sleep(2 ** attempt)
     
+    logger.error(f"❌ No se pudieron obtener datos para {ticker}")
     return None
 
 # ============================================================
@@ -130,11 +145,10 @@ def ticker_analysis(ticker):
         ticker = ticker.upper()
         logger.info(f"📊 Analizando {ticker}")
         
-        # Obtener datos con reintentos
         hist = get_stock_data(ticker)
         
         if hist is None or hist.empty:
-            logger.error(f"❌ No se pudieron obtener datos para {ticker}")
+            logger.error(f"❌ No hay datos para {ticker}")
             return jsonify({
                 'error': f'No se pudieron obtener datos para {ticker}',
                 'ticker': ticker,
@@ -145,22 +159,23 @@ def ticker_analysis(ticker):
         ndi, sentiment, momentum = calculate_ndi(closes)
         regime = classify_regime(ndi)
         
-        info = {}
+        # Obtener información
         try:
             stock = yf.Ticker(ticker)
             info = stock.info
+            company_name = info.get('longName', info.get('shortName', ticker))
+            sector = info.get('sector', 'Unknown')
+            current_price = closes[-1] if closes else 0
         except:
-            pass
-        
-        company_name = info.get('longName', info.get('shortName', ticker))
-        sector = info.get('sector', 'Unknown')
-        current_price = closes[-1] if closes else 0
+            company_name = ticker
+            sector = 'Unknown'
+            current_price = closes[-1] if closes else 0
         
         response = {
             'ticker': ticker,
             'companyName': company_name,
             'sector': sector,
-            'industry': info.get('industry', 'Unknown'),
+            'industry': 'Unknown',
             'ndi': round(ndi, 3),
             'statusLabel': regime['regime'],
             'statusColor': regime['color'],
@@ -238,5 +253,5 @@ def get_tickers():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     logger.info(f"🚀 SignalIQ API en puerto {port}")
-    logger.info("📊 Usando yfinance - SIN BASE DE DATOS")
+    logger.info("📊 Usando yfinance con User-Agent real")
     app.run(host='0.0.0.0', port=port, debug=False)
