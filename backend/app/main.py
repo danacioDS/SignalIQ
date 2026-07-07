@@ -834,6 +834,11 @@ def api_signals_intel():
             put_connection(conn)
 
 # ============================================================
+# REGISTRAR BLUEPRINTS (ANTES DEL FRONTEND)
+# ============================================================
+app.register_blueprint(market_intel_bp)
+
+# ============================================================
 # FRONTEND
 # ============================================================
 
@@ -871,7 +876,6 @@ def frontend_catchall(path):
 # RUN
 # ============================================================
 
-app.register_blueprint(market_intel_bp)
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
 
