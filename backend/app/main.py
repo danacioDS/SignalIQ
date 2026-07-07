@@ -1,6 +1,6 @@
-from app.market_intelligence import market_intel_bp
 """SignalIQ API - Production (Sin Mocks)"""
 
+from app.market_intelligence import market_intel_bp
 print("=" * 60)
 print("SIGNALIQ API - PRODUCTION")
 print("FILE:", __file__)
