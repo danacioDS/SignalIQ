@@ -1,9 +1,8 @@
 """
-SignalIQ API - PRODUCCIÓN
-Solo usa yfinance - SIN BASE DE DATOS
+SignalIQ API - Con noticias reales
 """
-
 import os
+import sys
 import logging
 from datetime import datetime, timezone
 from flask import Flask, jsonify, request
@@ -11,12 +10,15 @@ from flask_cors import CORS
 import yfinance as yf
 import numpy as np
 
-app = Flask(__name__)
+# Agregar path para importar scripts
+sys.path.append('/home/daniel/repo_lab/SignalIQ')
+from scripts.news_pipeline import process_news_for_ticker
+from layers.layer4_measurement import calculate_narrative_divergence_index
 
-# CORS - Permitir todos los orígenes
+app = Flask(__name__)
 CORS(app, origins=[
     "http://localhost:3000",
-    "http://127.0.0.1:3000", 
+    "http://127.0.0.1:3000",
     "https://signaliq-zeta-ten.vercel.app",
     "https://signaliq-zeta.vercel.app",
     "https://signaliq-l8mi.onrender.com"
@@ -28,43 +30,6 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # FUNCIONES DE ANÁLISIS
 # ============================================================
-
-def calculate_ndi(closes):
-    """Calcula NDI = Sentiment Z-Score - Momentum Z-Score"""
-    if len(closes) < 2:
-        return 0.0, 0.0, 0.0
-    
-    daily_returns = []
-    for i in range(1, len(closes)):
-        if closes[i-1] > 0:
-            daily_returns.append((closes[i] - closes[i-1]) / closes[i-1])
-    
-    if len(daily_returns) >= 2:
-        mean_ret = np.mean(daily_returns)
-        std_ret = np.std(daily_returns)
-        sentiment_zscore = (daily_returns[-1] - mean_ret) / std_ret if std_ret > 0 else 0.0
-    else:
-        sentiment_zscore = 0.0
-    
-    momentum_period = 20
-    if len(closes) >= momentum_period:
-        momentum_returns = []
-        for i in range(momentum_period, len(closes)):
-            if closes[i-momentum_period] > 0:
-                momentum_returns.append((closes[i] / closes[i-momentum_period] - 1))
-        if len(momentum_returns) >= 2:
-            mean_mom = np.mean(momentum_returns)
-            std_mom = np.std(momentum_returns)
-            momentum_zscore = (momentum_returns[-1] - mean_mom) / std_mom if std_mom > 0 else 0.0
-        else:
-            momentum_zscore = 0.0
-    else:
-        momentum_zscore = 0.0
-    
-    ndi = sentiment_zscore - momentum_zscore
-    ndi = max(-3.0, min(3.0, ndi))
-    
-    return ndi, sentiment_zscore, momentum_zscore
 
 def classify_regime(ndi):
     if ndi > 2.0:
@@ -92,8 +57,7 @@ def root():
         'name': 'SignalIQ API',
         'version': '2026-07-07',
         'status': 'operational',
-        'mode': 'yfinance_only',
-        'database': 'disabled'
+        'mode': 'yfinance_with_news'
     })
 
 @app.route('/health')
@@ -102,8 +66,7 @@ def health():
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now(timezone.utc).isoformat(),
-        'mode': 'yfinance_only',
-        'database': 'disabled'
+        'mode': 'yfinance_with_news'
     })
 
 @app.route('/api/ticker/analysis/<ticker>')
@@ -112,6 +75,7 @@ def ticker_analysis(ticker):
         ticker = ticker.upper()
         logger.info(f"📊 Analizando {ticker}")
         
+        # 1. Obtener precio (yfinance)
         stock = yf.Ticker(ticker)
         hist = stock.history(period="60d")
         
@@ -119,13 +83,26 @@ def ticker_analysis(ticker):
             return jsonify({'error': f'No data for {ticker}'}), 404
         
         closes = hist['Close'].tolist()
-        ndi, sentiment, momentum = calculate_ndi(closes)
+        current_price = closes[-1] if closes else 0
+        
+        # 2. Calcular NDI (Layer 4)
+        ndi, sentiment, momentum = calculate_narrative_divergence_index(closes)
         regime = classify_regime(ndi)
         
+        # 3. Obtener noticias REALES
+        news_data = process_news_for_ticker(ticker)
+        news_items = []
+        for h, s in zip(news_data['headlines'], news_data['scores']):
+            news_items.append({
+                'headline': h,
+                'sentiment': s,
+                'source': 'RSS Feed'
+            })
+        
+        # 4. Obtener información de la empresa
         info = stock.info
         company_name = info.get('longName', info.get('shortName', ticker))
         sector = info.get('sector', 'Unknown')
-        current_price = closes[-1] if closes else 0
         
         response = {
             'ticker': ticker,
@@ -136,6 +113,7 @@ def ticker_analysis(ticker):
             'statusLabel': regime['regime'],
             'statusColor': regime['color'],
             'updatedAt': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
+            'price': current_price,
             'quantitativeMetrics': {
                 'sentiment': round(sentiment, 3),
                 'momentum': round(momentum, 3),
@@ -160,15 +138,15 @@ def ticker_analysis(ticker):
                 'conditionsObserved': 0,
                 'totalConditions': 3,
                 'conditionsDetails': [],
-                'disclaimer': 'Feature en fase beta. Requiere validación adicional.',
+                'disclaimer': 'Feature en fase beta.',
                 'isBeta': True
             },
-            'aiInterpretation': f"{ticker}: NDI {ndi:.3f} - {regime['regime']}. Datos reales de yfinance.",
+            'aiInterpretation': f"{ticker}: NDI {ndi:.3f} - {regime['regime']}. {news_data['count']} noticias procesadas con sentimiento {news_data['sentiment']:.3f}.",
             'newsSummary': {
-                'items': [],
-                'positiveCount': 0,
-                'negativeCount': 0,
-                'averageSentiment': 0
+                'items': news_items,
+                'positiveCount': sum(1 for s in news_data['scores'] if s > 0.1),
+                'negativeCount': sum(1 for s in news_data['scores'] if s < -0.1),
+                'averageSentiment': news_data['sentiment']
             },
             'relativeContext': {
                 'sectorName': sector,
@@ -189,7 +167,7 @@ def ticker_analysis(ticker):
                     {'rank': 1, 'ticker': ticker, 'companyName': company_name,
                      'ndi': round(ndi, 3), 'regimeLabel': regime['label'], 'regimeColor': regime['color']}
                 ],
-                'insight': f"{ticker}: NDI {ndi:.3f} - {regime['regime']}"
+                'insight': f"{ticker}: NDI {ndi:.3f} - {regime['regime']}. Sentimiento de noticias: {news_data['sentiment']:.3f}"
             }
         }
         
@@ -209,5 +187,5 @@ def get_tickers():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     logger.info(f"🚀 SignalIQ API en puerto {port}")
-    logger.info("📊 Usando yfinance - SIN BASE DE DATOS")
+    logger.info("📊 Usando yfinance + noticias reales")
     app.run(host='0.0.0.0', port=port, debug=False)
