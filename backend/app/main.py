@@ -11,6 +11,8 @@ import numpy as np
 
 # Importación directa (layers ahora está en app/)
 from layers.layer4_measurement import calculate_narrative_divergence_index
+from layers.layer3_sentiment import Layer3Sentiment
+from layers.layer3_momentum import Layer3Momentum
 from news_pipeline import process_news_for_ticker
 
 app = Flask(__name__)
@@ -24,6 +26,10 @@ CORS(app, origins=[
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Inicializar Layer 3
+sentiment_engine = Layer3Sentiment()
+momentum_engine = Layer3Momentum()
 
 # ============================================================
 # FUNCIONES DE ANÁLISIS
@@ -44,6 +50,41 @@ def classify_regime(ndi):
         return {'regime': 'STRONG UNDERVALUED', 'color': 'green', 'label': 'STRONG BUY'}
     else:
         return {'regime': 'CAPITULATION', 'color': 'blue', 'label': 'ACCUMULATE'}
+
+def calculate_sentiment_zscore(news_sentiment):
+    """
+    Calcula el z-score del sentimiento basado en noticias.
+    Usa valores históricos simulados para la demostración.
+    """
+    if news_sentiment is None:
+        return 0.0
+    
+    # Por ahora, usamos una transformación simple
+    # En producción, esto vendría de Layer 3
+    return float(news_sentiment)
+
+def calculate_momentum_zscore(price_history):
+    """
+    Calcula el z-score del momentum basado en precios históricos.
+    """
+    if not price_history or len(price_history) < 2:
+        return 0.0
+    
+    # Calcular retornos diarios
+    returns = []
+    for i in range(1, len(price_history)):
+        if price_history[i-1] != 0:
+            returns.append((price_history[i] - price_history[i-1]) / price_history[i-1])
+    
+    if not returns:
+        return 0.0
+    
+    # Calcular z-score del último retorno
+    last_return = returns[-1]
+    mean_return = np.mean(returns)
+    std_return = np.std(returns) if np.std(returns) > 0 else 1.0
+    
+    return (last_return - mean_return) / std_return
 
 # ============================================================
 # RUTAS
@@ -94,28 +135,26 @@ def ticker_analysis(ticker):
             stock = yf.Ticker(ticker)
             hist = stock.history(period="60d")
             if not hist.empty:
-                closes = hist['Close'].tolist()
                 price_data['available'] = True
-                price_data['price'] = closes[-1] if closes else 0
-                price_data['hist'] = hist
+                price_data['price'] = hist['Close'].iloc[-1]
+                price_data['hist'] = hist['Close'].tolist()
                 logger.info(f"✅ Precio obtenido para {ticker}: {price_data['price']}")
         except Exception as e:
             logger.warning(f"⚠️ Error al obtener precio para {ticker}: {str(e)}")
         
-        # 3. Calcular NDI (Layer 4) - usar precio mock si no hay datos
-        if price_data['available'] and not price_data['hist'].empty:
-            closes = price_data['hist']['Close'].tolist()
-            ndi, sentiment, momentum = calculate_narrative_divergence_index(closes)
-        else:
-            # Usar un precio mock para el cálculo del NDI
-            mock_price = 100.0
-            mock_closes = [mock_price] * 60
-            ndi, sentiment, momentum = calculate_narrative_divergence_index(mock_closes)
-            logger.info(f"🔄 Usando datos mock para NDI de {ticker}")
+        # 3. Calcular z-scores usando Layer 3
+        sentiment_zscore = calculate_sentiment_zscore(news_data['sentiment'])
+        momentum_zscore = calculate_momentum_zscore(price_data['hist']) if price_data['available'] else 0.0
+        
+        # 4. Calcular NDI (Layer 4)
+        ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
+        if ndi is None:
+            ndi = 0.0
+            logger.warning(f"⚠️ NDI calculado como None para {ticker}, usando 0.0")
         
         regime = classify_regime(ndi)
         
-        # 4. Obtener información de la empresa (si está disponible)
+        # 5. Obtener información de la empresa (si está disponible)
         company_name = ticker
         sector = 'Unknown'
         industry = 'Unknown'
@@ -128,7 +167,7 @@ def ticker_analysis(ticker):
         except:
             pass
         
-        # 5. Construir respuesta
+        # 6. Construir respuesta
         response = {
             'ticker': ticker,
             'companyName': company_name,
@@ -141,8 +180,8 @@ def ticker_analysis(ticker):
             'updatedAt': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
             'price': price_data['price'] if price_data['available'] else None,
             'quantitativeMetrics': {
-                'sentiment': round(sentiment, 3),
-                'momentum': round(momentum, 3),
+                'sentiment': round(sentiment_zscore, 3),
+                'momentum': round(momentum_zscore, 3),
                 'divergence': round(ndi, 3),
                 'sourcesCount': len(news_data['headlines'])
             },
@@ -177,7 +216,7 @@ def ticker_analysis(ticker):
             'relativeContext': {
                 'sectorName': sector,
                 'comparison': {
-                    'tickerSentiment': round(sentiment, 3),
+                    'tickerSentiment': round(sentiment_zscore, 3),
                     'sectorSentiment': 0,
                     'sentimentDifference': 0,
                     'sentimentLabel': '🟢 en línea con el sector',
@@ -197,7 +236,7 @@ def ticker_analysis(ticker):
             }
         }
         
-        # 6. Si no hay precio, agregar mensaje adicional
+        # 7. Si no hay precio, agregar mensaje adicional
         if not price_data['available']:
             response['message'] = "Precio no disponible temporalmente, pero las noticias se muestran correctamente."
         
@@ -206,6 +245,7 @@ def ticker_analysis(ticker):
     except Exception as e:
         logger.error(f"❌ Error en ticker_analysis: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
 @app.route('/api/tickers')
 def get_tickers():
     return jsonify({
@@ -218,4 +258,3 @@ if __name__ == '__main__':
     logger.info(f"🚀 SignalIQ API en puerto {port}")
     logger.info("📊 Usando yfinance + noticias reales")
     app.run(host='0.0.0.0', port=port, debug=False)
-# Forzar cambio para deploy
