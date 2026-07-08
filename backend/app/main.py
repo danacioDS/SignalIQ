@@ -194,14 +194,18 @@ def ticker_analysis(ticker):
                 'source': 'RSS Feed'
             })
         
-        # 2. Intentar obtener precio (yfinance)
+        # 2. Intentar obtener precio (yfinance) con User-Agent
         price_available = False
         price = None
         price_history = []
         
         try:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period="5d")
+            # Configurar headers para simular un navegador
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+            stock = yf.Ticker(ticker, headers=headers)
+            hist = stock.history(period="5d", timeout=10)
             if not hist.empty:
                 price_available = True
                 price = hist['Close'].iloc[-1]
@@ -212,109 +216,6 @@ def ticker_analysis(ticker):
         except Exception as e:
             logger.error(f"❌ Error al obtener precio para {ticker}: {str(e)}")
         
-        # 3. Calcular z-scores
-        sentiment_zscore = calculate_sentiment_zscore(news_data['sentiment'])
-        momentum_zscore = calculate_momentum_zscore(price_history) if price_available else 0.0
-        
-        # 4. Calcular NDI (Layer 4)
-        ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
-        if ndi is None:
-            ndi = 0.0
-            logger.warning(f"⚠️ NDI calculado como None para {ticker}, usando 0.0")
-        
-        regime = classify_regime(ndi)
-        
-        # 5. Obtener información de la empresa (si está disponible)
-        company_name = ticker
-        sector = 'Unknown'
-        industry = 'Unknown'
-        try:
-            if price_available:
-                info = yf.Ticker(ticker).info
-                company_name = info.get('longName', info.get('shortName', ticker))
-                sector = info.get('sector', 'Unknown')
-                industry = info.get('industry', 'Unknown')
-        except:
-            pass
-        
-        # 6. Construir respuesta
-        response = {
-            'ticker': ticker,
-            'companyName': company_name,
-            'sector': sector,
-            'industry': industry,
-            'price_unavailable': not price_available,
-            'ndi': round(ndi, 3),
-            'statusLabel': regime['regime'],
-            'statusColor': regime['color'],
-            'updatedAt': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
-            'price': price,
-            'quantitativeMetrics': {
-                'sentiment': round(sentiment_zscore, 3),
-                'momentum': round(momentum_zscore, 3),
-                'divergence': round(ndi, 3),
-                'sourcesCount': len(news_data['headlines'])
-            },
-            'narrativeBreakdown': {
-                'consensusPercentage': 74,
-                'consensusLabel': 'Alto',
-                'intensityPercentage': 52,
-                'intensityLabel': 'Moderada',
-                'dispersionValue': 0.22,
-                'dispersionLabel': 'Baja',
-                'mediaBias': {
-                    'centerBizPercentage': 60,
-                    'leftPercentage': 20,
-                    'rightPercentage': 20
-                }
-            },
-            'narrativeExhaustion': {
-                'level': 'BAJA',
-                'conditionsObserved': 0,
-                'totalConditions': 3,
-                'conditionsDetails': [],
-                'disclaimer': 'Feature en fase beta.',
-                'isBeta': True
-            },
-            'aiInterpretation': f"{ticker}: NDI {ndi:.3f} - {regime['regime']}. {news_data['count']} noticias procesadas con sentimiento {news_data['sentiment']:.3f}.",
-            'newsSummary': {
-                'items': news_items,
-                'positiveCount': sum(1 for s in news_data['scores'] if s > 0.1),
-                'negativeCount': sum(1 for s in news_data['scores'] if s < -0.1),
-                'averageSentiment': news_data['sentiment']
-            },
-            'relativeContext': {
-                'sectorName': sector,
-                'comparison': {
-                    'tickerSentiment': round(sentiment_zscore, 3),
-                    'sectorSentiment': 0,
-                    'sentimentDifference': 0,
-                    'sentimentLabel': '🟢 en línea con el sector',
-                    'tickerConsensus': 50,
-                    'sectorConsensus': 50,
-                    'consensusDifference': 0,
-                    'consensusLabel': '🟢 en línea con el sector',
-                    'tickerExhaustion': 'BAJA',
-                    'sectorExhaustion': 'BAJA',
-                    'exhaustionLabel': '🟢 en línea con el sector'
-                },
-                'sectorRanking': [
-                    {'rank': 1, 'ticker': ticker, 'companyName': company_name,
-                     'ndi': round(ndi, 3), 'regimeLabel': regime['label'], 'regimeColor': regime['color']}
-                ],
-                'insight': f"{ticker}: NDI {ndi:.3f} - {regime['regime']}. Sentimiento de noticias: {news_data['sentiment']:.3f}"
-            }
-        }
-        
-        # 7. Si no hay precio, agregar mensaje adicional
-        if not price_available:
-            response['message'] = "Precio no disponible temporalmente, pero las noticias se muestran correctamente."
-        
-        return jsonify(response)
-        
-    except Exception as e:
-        logger.error(f"❌ Error en ticker_analysis: {str(e)}")
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/tickers')
 def get_tickers():
