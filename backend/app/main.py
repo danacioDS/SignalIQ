@@ -67,7 +67,6 @@ def health():
         'mode': 'yfinance_with_news'
     })
 
-/////////////////////////////////////////////
 @app.route('/api/ticker/analysis/<ticker>')
 def ticker_analysis(ticker):
     try:
@@ -207,7 +206,6 @@ def ticker_analysis(ticker):
     except Exception as e:
         logger.error(f"❌ Error en ticker_analysis: {str(e)}")
         return jsonify({'error': str(e)}), 500
-/////////////////////////////////////////////
 @app.route('/api/tickers')
 def get_tickers():
     return jsonify({
