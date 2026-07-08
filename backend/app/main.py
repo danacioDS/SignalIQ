@@ -9,6 +9,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import yfinance as yf
 import numpy as np
+import requests
 
 # Importación directa (layers ahora está en app/)
 from layers.layer4_measurement import calculate_narrative_divergence_index
@@ -38,7 +39,6 @@ def after_request(response):
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 # ============================================================
 # FUNCIONES DE ANÁLISIS
 # ============================================================
@@ -60,25 +60,14 @@ def classify_regime(ndi):
         return {'regime': 'CAPITULATION', 'color': 'blue', 'label': 'ACCUMULATE'}
 
 def calculate_sentiment_zscore(news_sentiment):
-    """
-    Calcula el z-score del sentimiento basado en noticias.
-    Usa valores históricos simulados para la demostración.
-    """
     if news_sentiment is None:
         return 0.0
-    
-    # Por ahora, usamos una transformación simple
-    # En producción, esto vendría de Layer 3
     return float(news_sentiment)
 
 def calculate_momentum_zscore(price_history):
-    """
-    Calcula el z-score del momentum basado en precios históricos.
-    """
     if not price_history or len(price_history) < 2:
         return 0.0
     
-    # Calcular retornos diarios
     returns = []
     for i in range(1, len(price_history)):
         if price_history[i-1] != 0:
@@ -87,12 +76,94 @@ def calculate_momentum_zscore(price_history):
     if not returns:
         return 0.0
     
-    # Calcular z-score del último retorno
     last_return = returns[-1]
     mean_return = np.mean(returns)
     std_return = np.std(returns) if np.std(returns) > 0 else 1.0
     
     return (last_return - mean_return) / std_return
+
+# ============================================================
+# FUNCIONES DE PRECIOS (SIN HARDCODE)
+# ============================================================
+
+def get_price_yfinance(ticker):
+    """Obtener precio desde Yahoo Finance con User-Agent"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        stock = yf.Ticker(ticker, headers=headers)
+        hist = stock.history(period="1d", timeout=10)
+        if not hist.empty:
+            price = hist['Close'].iloc[-1]
+            logger.info(f"💰 yfinance: ${price} para {ticker}")
+            return price
+        else:
+            logger.warning(f"⚠️ yfinance: sin datos para {ticker}")
+    except Exception as e:
+        logger.error(f"❌ yfinance error para {ticker}: {str(e)}")
+    return None
+
+def get_price_twelve_data(ticker):
+    """Obtener precio desde Twelve Data API (gratuita)"""
+    api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
+    if not api_key:
+        logger.warning("⚠️ TWELVE_DATA_API_KEY no configurada")
+        return None
+    
+    try:
+        url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={api_key}"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        # ✅ CORRECCIÓN: Twelve Data devuelve {"price": "204.3"}
+        if 'price' in data:
+            price = float(data['price'])
+            logger.info(f"💰 Twelve Data: ${price} para {ticker}")
+            return price
+    except Exception as e:
+        logger.error(f"❌ Twelve Data error para {ticker}: {str(e)}")
+    return None
+
+def get_price_alpha_vantage(ticker):
+    """Obtener precio desde Alpha Vantage API (gratuita)"""
+    api_key = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
+    if not api_key:
+        logger.warning("⚠️ ALPHA_VANTAGE_API_KEY no configurada")
+        return None
+    
+    try:
+        url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        # ✅ CORRECCIÓN: Alpha Vantage devuelve {"Global Quote": {"05. price": "196.93"}}
+        if 'Global Quote' in data and '05. price' in data['Global Quote']:
+            price = float(data['Global Quote']['05. price'])
+            logger.info(f"💰 Alpha Vantage: ${price} para {ticker}")
+            return price
+    except Exception as e:
+        logger.error(f"❌ Alpha Vantage error para {ticker}: {str(e)}")
+    return None
+
+def get_price(ticker):
+    """Intentar obtener precio de múltiples fuentes (sin hardcode)"""
+    # 1. Intentar yfinance
+    price = get_price_yfinance(ticker)
+    if price is not None:
+        return price
+    
+    # 2. Intentar Twelve Data
+    price = get_price_twelve_data(ticker)
+    if price is not None:
+        return price
+    
+    # 3. Intentar Alpha Vantage
+    price = get_price_alpha_vantage(ticker)
+    if price is not None:
+        return price
+    
+    # 4. Si todas fallan, devolver None
+    logger.warning(f"⚠️ No se pudo obtener precio para {ticker} de ninguna fuente")
+    return None
 
 # ============================================================
 # RUTAS
@@ -140,21 +211,8 @@ def signals_live():
             
             regime = classify_regime(ndi)
             
-            # Intentar obtener precio con User-Agent
-            price = None
-            try:
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                }
-                stock = yf.Ticker(ticker, headers=headers)
-                hist = stock.history(period="1d", timeout=10)
-                if not hist.empty:
-                    price = hist['Close'].iloc[-1]
-                    logger.info(f"💰 Precio obtenido para {ticker}: ${price}")
-                else:
-                    logger.warning(f"⚠️ No hay datos de precio para {ticker}")
-            except Exception as e:
-                logger.error(f"❌ Error al obtener precio para {ticker}: {str(e)}")
+            # Obtener precio (sin hardcode)
+            price = get_price(ticker)
             
             results.append({
                 'ticker': ticker,
@@ -167,7 +225,6 @@ def signals_live():
             })
         except Exception as e:
             logger.error(f"Error procesando {ticker}: {e}")
-            # Agregar un resultado de fallback
             results.append({
                 'ticker': ticker,
                 'ndi': 0,
@@ -200,26 +257,23 @@ def ticker_analysis(ticker):
                 'source': 'RSS Feed'
             })
         
-        # 2. Intentar obtener precio (yfinance) con User-Agent
-        price_available = False
-        price = None
+        # 2. Obtener precio (sin hardcode)
+        price = get_price(ticker)
+        price_available = price is not None
         price_history = []
         
-        try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-            stock = yf.Ticker(ticker, headers=headers)
-            hist = stock.history(period="5d", timeout=10)
-            if not hist.empty:
-                price_available = True
-                price = hist['Close'].iloc[-1]
-                price_history = hist['Close'].tolist()
-                logger.info(f"💰 Precio obtenido para {ticker}: ${price}")
-            else:
-                logger.warning(f"⚠️ No hay datos de precio para {ticker}")
-        except Exception as e:
-            logger.error(f"❌ Error al obtener precio para {ticker}: {str(e)}")
+        # Si hay precio, intentar obtener historial para momentum
+        if price_available:
+            try:
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+                stock = yf.Ticker(ticker, headers=headers)
+                hist = stock.history(period="5d", timeout=10)
+                if not hist.empty:
+                    price_history = hist['Close'].tolist()
+            except:
+                pass
         
         # 3. Calcular z-scores
         sentiment_zscore = calculate_sentiment_zscore(news_data['sentiment'])
@@ -229,7 +283,6 @@ def ticker_analysis(ticker):
         ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
         if ndi is None:
             ndi = 0.0
-            logger.warning(f"⚠️ NDI calculado como None para {ticker}, usando 0.0")
         
         regime = classify_regime(ndi)
         
@@ -239,6 +292,9 @@ def ticker_analysis(ticker):
         industry = 'Unknown'
         try:
             if price_available:
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
                 info = yf.Ticker(ticker, headers=headers).info
                 company_name = info.get('longName', info.get('shortName', ticker))
                 sector = info.get('sector', 'Unknown')
