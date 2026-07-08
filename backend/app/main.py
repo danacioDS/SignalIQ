@@ -22,10 +22,18 @@ app = Flask(__name__)
 CORS(app, origins=[
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://signaliq-zeta-ten.vercel.app",  # ✅ Esta es la URL de producción
+    "https://signaliq-zeta-ten.vercel.app",
     "https://signaliq-zeta.vercel.app",
     "https://signaliq-l8mi.onrender.com"
 ])
+
+# Manejar solicitudes OPTIONS para CORS
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -106,6 +114,68 @@ def health():
         'status': 'healthy',
         'timestamp': datetime.now(timezone.utc).isoformat(),
         'mode': 'yfinance_with_news'
+    })
+
+@app.route('/api/signals-live')
+def signals_live():
+    """Endpoint para el dashboard de señales en vivo"""
+    tickers_param = request.args.get('tickers', '')
+    ticker_list = [t.strip() for t in tickers_param.split(',') if t.strip()]
+    
+    if not ticker_list:
+        return jsonify({'success': False, 'error': 'No tickers provided'}), 400
+    
+    results = []
+    for ticker in ticker_list:
+        try:
+            # Obtener noticias para cada ticker
+            news_data = process_news_for_ticker(ticker)
+            
+            # Calcular NDI
+            sentiment_zscore = calculate_sentiment_zscore(news_data['sentiment'])
+            momentum_zscore = 0.0
+            ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
+            if ndi is None:
+                ndi = 0.0
+            
+            regime = classify_regime(ndi)
+            
+            # Intentar obtener precio
+            price = None
+            try:
+                stock = yf.Ticker(ticker)
+                hist = stock.history(period="1d")
+                if not hist.empty:
+                    price = hist['Close'].iloc[-1]
+            except:
+                pass
+            
+            results.append({
+                'ticker': ticker,
+                'ndi': ndi,
+                'sentiment_zscore': sentiment_zscore,
+                'momentum_zscore': momentum_zscore,
+                'current_price': price,
+                'regime': regime['regime'],
+                'confidence': 70
+            })
+        except Exception as e:
+            logger.error(f"Error procesando {ticker}: {e}")
+            # Agregar un resultado de fallback
+            results.append({
+                'ticker': ticker,
+                'ndi': 0,
+                'sentiment_zscore': 0,
+                'momentum_zscore': 0,
+                'current_price': None,
+                'regime': 'NEUTRAL',
+                'confidence': 0
+            })
+    
+    return jsonify({
+        'success': True,
+        'signals': results,
+        'count': len(results)
     })
 
 @app.route('/api/ticker/analysis/<ticker>')
