@@ -166,16 +166,28 @@ def get_price(ticker):
 # FUNCIONES DE INFORMACIÓN DE EMPRESA
 # ============================================================
 
+# Caché para información de empresas
+company_cache = {}
+
 def get_company_info(ticker):
-    """Obtener información de la empresa desde yfinance"""
+    """Obtener información de la empresa desde yfinance con caché"""
+    if ticker in company_cache:
+        return company_cache[ticker]
+    
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
-        return {
+        
+        result = {
             'company_name': info.get('longName', info.get('shortName', ticker)),
             'sector': info.get('sector', 'Unknown'),
             'industry': info.get('industry', 'Unknown')
         }
+        
+        company_cache[ticker] = result
+        logger.info(f"📊 Info de {ticker}: {result['company_name']}")
+        
+        return result
     except Exception as e:
         logger.warning(f"⚠️ No se pudo obtener info de {ticker}: {str(e)}")
         return {
