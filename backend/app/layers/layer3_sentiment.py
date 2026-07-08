@@ -26,7 +26,10 @@ _OLD_POSITIVE = {
     "achievement", "milestone", "breakthrough", "pioneer", "trailblazer",
     "market", "share", "demand", "adoption", "expansion", "strategic",
     "partnership", "collaboration", "alliance", "acquisition", "merger",
-    "dividend", "yield", "return", "shareholder", "value", "wealth"
+    "dividend", "yield", "return", "shareholder", "value", "wealth", 
+    "expands", "partnership", "partnerships", "open", "opens", "becomes",
+    "believe", "believes", "maintains", "maintain", "rating", "upgrade",
+    "target", "price", "potential", "opportunity", "breakthrough"
 }
 
 _OLD_NEGATIVE = {
@@ -41,7 +44,9 @@ _OLD_NEGATIVE = {
     "liability", "lawsuit", "investigation", "regulatory", "fine",
     "penalty", "sanction", "violation", "breach", "default", "bankruptcy",
     "insolvency", "liquidation", "layoff", "restructuring", "turmoil",
-    "volatility", "instability", "uncertain", "unpredictable"
+    "volatility", "instability", "uncertain", "unpredictable",
+    "declines", "decline", "amid", "turmoil", "lowered", "lowering",
+    "pressure", "concern", "uncertainty", "volatility", "headwind"
 }
 
 POSITIVE_WORDS = LM_POSITIVE | _OLD_POSITIVE
@@ -65,7 +70,7 @@ NEGATION_WORDS = {
 def polarity(text: str) -> float:
     """
     Calcula el sentimiento de un texto usando el vocabulario Loughran-McDonald.
-    Considera palabras negativas y modificadores de negación.
+    Considera palabras negativas, modificadores de negación y frases compuestas.
     """
     if not text or not isinstance(text, str):
         return 0.0
@@ -76,7 +81,29 @@ def polarity(text: str) -> float:
     if not tokens:
         return 0.0
     
-    # Detectar negaciones
+    # Frases compuestas clave (2-3 palabras)
+    phrases = {
+        "opens new doors": 0.3,
+        "buy rating": 0.4,
+        "target price": 0.2,
+        "amid turmoil": -0.4,
+        "holdings lowered": -0.3,
+        "stock declines": -0.4,
+        "expands reach": 0.3,
+        "becomes first": 0.2,
+        "believes": 0.2,
+        "maintains rating": 0.3,
+        "cheapest valuation": 0.2,
+        "pre-ai boom": 0.5
+    }
+    
+    # Verificar frases compuestas
+    phrase_score = 0.0
+    for phrase, score in phrases.items():
+        if phrase in text_lower:
+            phrase_score += score
+    
+    # Análisis de palabras individuales
     negated = False
     pos_count = 0
     neg_count = 0
@@ -108,10 +135,20 @@ def polarity(text: str) -> float:
             elif is_negative:
                 neg_count += 1
     
-    # Si no hay palabras con sentimiento, retornar 0
-    if pos_count == 0 and neg_count == 0:
-        return 0.0
-    
-    # Calcular sentimiento como proporción balanceada
+    # Calcular sentimiento base
     total = pos_count + neg_count
-    return (pos_count - neg_count) / total
+    if total == 0:
+        base_score = 0.0
+    else:
+        base_score = (pos_count - neg_count) / total
+    
+    # Combinar con el score de frases
+    if phrase_score != 0.0:
+        # Normalizar el score de frases (máximo 0.5)
+        normalized_phrase = min(0.5, max(-0.5, phrase_score / 3))
+        # Combinar con el score base (base pesa 60%, frases 40%)
+        combined_score = (base_score * 0.6) + (normalized_phrase * 0.4)
+        # Limitar el rango [-1, 1]
+        return max(-1.0, min(1.0, combined_score))
+    
+    return base_score
