@@ -17,10 +17,12 @@ from news_pipeline import process_news_for_ticker
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend', 'app'))
 
 app = Flask(__name__)
+
+# Configurar CORS para permitir solicitudes desde Vercel
 CORS(app, origins=[
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://signaliq-zeta-ten.vercel.app",
+    "https://signaliq-zeta-ten.vercel.app",  # ✅ Esta es la URL de producción
     "https://signaliq-zeta.vercel.app",
     "https://signaliq-l8mi.onrender.com"
 ])
