@@ -10,6 +10,7 @@ from flask_cors import CORS
 import yfinance as yf
 import numpy as np
 import requests
+import time
 
 # Importación directa (layers ahora está en app/)
 from layers.layer4_measurement import calculate_narrative_divergence_index
@@ -38,6 +39,7 @@ def after_request(response):
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 # ============================================================
 # FUNCIONES DE ANÁLISIS
@@ -82,18 +84,20 @@ def calculate_momentum_zscore(price_history):
     
     return (last_return - mean_return) / std_return
 
+
 # ============================================================
-# FUNCIONES DE PRECIOS (SIN HARDCODE)
+# FUNCIONES DE PRECIOS (PRIORIZANDO YFINANCE)
 # ============================================================
 
 def get_price_yfinance(ticker):
-    """Obtener precio desde Yahoo Finance"""
+    """Obtener precio desde Yahoo Finance (fuente principal)"""
     try:
+        start = time.time()
         stock = yf.Ticker(ticker)
-        hist = stock.history(period="1d", timeout=10)
+        hist = stock.history(period="2d", timeout=15)
         if not hist.empty:
             price = hist['Close'].iloc[-1]
-            logger.info(f"💰 yfinance: ${price} para {ticker}")
+            logger.info(f"💰 yfinance: ${price} para {ticker} (tardó {time.time() - start:.2f}s)")
             return price
         else:
             logger.warning(f"⚠️ yfinance: sin datos para {ticker}")
@@ -102,10 +106,9 @@ def get_price_yfinance(ticker):
     return None
 
 def get_price_twelve_data(ticker):
-    """Obtener precio desde Twelve Data API"""
+    """Obtener precio desde Twelve Data API (fallback 1)"""
     api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
     if not api_key:
-        logger.warning("⚠️ TWELVE_DATA_API_KEY no configurada")
         return None
     
     try:
@@ -121,10 +124,9 @@ def get_price_twelve_data(ticker):
     return None
 
 def get_price_alpha_vantage(ticker):
-    """Obtener precio desde Alpha Vantage API"""
+    """Obtener precio desde Alpha Vantage API (fallback 2)"""
     api_key = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
     if not api_key:
-        logger.warning("⚠️ ALPHA_VANTAGE_API_KEY no configurada")
         return None
     
     try:
@@ -140,24 +142,48 @@ def get_price_alpha_vantage(ticker):
     return None
 
 def get_price(ticker):
-    """Intentar obtener precio de múltiples fuentes"""
-    # 1. Intentar yfinance
+    """Intentar obtener precio: yfinance primero, luego fallbacks"""
+    # 1. Intentar yfinance (PRINCIPAL)
     price = get_price_yfinance(ticker)
     if price is not None:
         return price
     
-    # 2. Intentar Twelve Data
+    # 2. Intentar Twelve Data (FALLBACK 1)
     price = get_price_twelve_data(ticker)
     if price is not None:
         return price
     
-    # 3. Intentar Alpha Vantage
+    # 3. Intentar Alpha Vantage (FALLBACK 2)
     price = get_price_alpha_vantage(ticker)
     if price is not None:
         return price
     
     logger.warning(f"⚠️ No se pudo obtener precio para {ticker} de ninguna fuente")
     return None
+
+
+# ============================================================
+# FUNCIONES DE INFORMACIÓN DE EMPRESA
+# ============================================================
+
+def get_company_info(ticker):
+    """Obtener información de la empresa desde yfinance"""
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        return {
+            'company_name': info.get('longName', info.get('shortName', ticker)),
+            'sector': info.get('sector', 'Unknown'),
+            'industry': info.get('industry', 'Unknown')
+        }
+    except Exception as e:
+        logger.warning(f"⚠️ No se pudo obtener info de {ticker}: {str(e)}")
+        return {
+            'company_name': ticker,
+            'sector': 'Unknown',
+            'industry': 'Unknown'
+        }
+
 
 # ============================================================
 # RUTAS
@@ -236,6 +262,7 @@ def ticker_analysis(ticker):
         ticker = ticker.upper()
         logger.info(f"📊 Analizando {ticker}")
         
+        # 1. Obtener noticias REALES
         news_data = process_news_for_ticker(ticker)
         news_items = []
         for h, s in zip(news_data['headlines'], news_data['scores']):
@@ -245,10 +272,12 @@ def ticker_analysis(ticker):
                 'source': 'RSS Feed'
             })
         
+        # 2. Obtener precio (yfinance primero)
         price = get_price(ticker)
         price_available = price is not None
         price_history = []
         
+        # 3. Obtener historial de precios para momentum
         if price_available:
             try:
                 stock = yf.Ticker(ticker)
@@ -258,27 +287,24 @@ def ticker_analysis(ticker):
             except:
                 pass
         
+        # 4. Calcular z-scores
         sentiment_zscore = calculate_sentiment_zscore(news_data['sentiment'])
         momentum_zscore = calculate_momentum_zscore(price_history) if price_available else 0.0
         
+        # 5. Calcular NDI
         ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
         if ndi is None:
             ndi = 0.0
         
         regime = classify_regime(ndi)
         
-        company_name = ticker
-        sector = 'Unknown'
-        industry = 'Unknown'
-        try:
-            if price_available:
-                info = yf.Ticker(ticker).info
-                company_name = info.get('longName', info.get('shortName', ticker))
-                sector = info.get('sector', 'Unknown')
-                industry = info.get('industry', 'Unknown')
-        except:
-            pass
+        # 6. Obtener información de la empresa (SIEMPRE desde yfinance)
+        company_info = get_company_info(ticker)
+        company_name = company_info['company_name']
+        sector = company_info['sector']
+        industry = company_info['industry']
         
+        # 7. Construir respuesta
         response = {
             'ticker': ticker,
             'companyName': company_name,
