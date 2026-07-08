@@ -11,8 +11,6 @@ import numpy as np
 
 # Importación directa (layers ahora está en app/)
 from layers.layer4_measurement import calculate_narrative_divergence_index
-from layers.layer3_sentiment import Layer3Sentiment
-from layers.layer3_momentum import Layer3Momentum
 from news_pipeline import process_news_for_ticker
 
 app = Flask(__name__)
@@ -27,9 +25,6 @@ CORS(app, origins=[
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Inicializar Layer 3
-sentiment_engine = Layer3Sentiment()
-momentum_engine = Layer3Momentum()
 
 # ============================================================
 # FUNCIONES DE ANÁLISIS
