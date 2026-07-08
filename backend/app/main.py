@@ -2,6 +2,7 @@
 SignalIQ API - Con noticias reales
 """
 import os
+import sys
 import logging
 from datetime import datetime, timezone
 from flask import Flask, jsonify, request
@@ -12,6 +13,8 @@ import numpy as np
 # Importación directa (layers ahora está en app/)
 from layers.layer4_measurement import calculate_narrative_divergence_index
 from news_pipeline import process_news_for_ticker
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend', 'app'))
 
 app = Flask(__name__)
 CORS(app, origins=[
