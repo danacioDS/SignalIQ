@@ -51,7 +51,6 @@ yf_session = get_yfinance_session()
 # Manejar solicitudes OPTIONS para CORS (sin duplicar Access-Control-Allow-Origin)
 @app.after_request
 def after_request(response):
-    # No agregar Access-Control-Allow-Origin aquí porque CORS ya lo maneja
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
@@ -105,32 +104,11 @@ def calculate_momentum_zscore(price_history):
 
 
 # ============================================================
-# FUNCIONES DE PRECIOS E INFORMACIÓN (PRIORIZANDO TWELVE DATA)
+# FUNCIONES DE PRECIOS (YFINANCE PRINCIPAL, TWELVE DATA/ALPHA VANTAGE BACKUP)
 # ============================================================
 
-def get_price_twelve_data(ticker):
-    """Obtener precio desde Twelve Data API (fuente principal)"""
-    api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
-    if not api_key:
-        logger.warning("⚠️ TWELVE_DATA_API_KEY no configurada")
-        return None
-    
-    try:
-        url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={api_key}"
-        response = requests.get(url, timeout=5)
-        data = response.json()
-        if 'price' in data:
-            price = float(data['price'])
-            logger.info(f"💰 Twelve Data: ${price} para {ticker}")
-            return price
-        else:
-            logger.warning(f"⚠️ Twelve Data: respuesta inesperada para {ticker}: {data}")
-    except Exception as e:
-        logger.error(f"❌ Twelve Data error para {ticker}: {str(e)}")
-    return None
-
 def get_price_yfinance(ticker):
-    """Obtener precio desde Yahoo Finance (fallback)"""
+    """Obtener precio desde Yahoo Finance (fuente principal)"""
     try:
         start = time.time()
         stock = yf.Ticker(ticker, session=yf_session)
@@ -145,8 +123,28 @@ def get_price_yfinance(ticker):
         logger.error(f"❌ yfinance error para {ticker}: {str(e)}")
     return None
 
+def get_price_twelve_data(ticker):
+    """Obtener precio desde Twelve Data API (backup 1)"""
+    api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
+    if not api_key:
+        return None
+    
+    try:
+        url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={api_key}"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        if 'price' in data:
+            price = float(data['price'])
+            logger.info(f"💰 Twelve Data (backup): ${price} para {ticker}")
+            return price
+        else:
+            logger.warning(f"⚠️ Twelve Data: respuesta inesperada para {ticker}: {data}")
+    except Exception as e:
+        logger.error(f"❌ Twelve Data error para {ticker}: {str(e)}")
+    return None
+
 def get_price_alpha_vantage(ticker):
-    """Obtener precio desde Alpha Vantage API (fallback 2)"""
+    """Obtener precio desde Alpha Vantage API (backup 2)"""
     api_key = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
     if not api_key:
         return None
@@ -157,73 +155,52 @@ def get_price_alpha_vantage(ticker):
         data = response.json()
         if 'Global Quote' in data and '05. price' in data['Global Quote']:
             price = float(data['Global Quote']['05. price'])
-            logger.info(f"💰 Alpha Vantage: ${price} para {ticker}")
+            logger.info(f"💰 Alpha Vantage (backup): ${price} para {ticker}")
             return price
     except Exception as e:
         logger.error(f"❌ Alpha Vantage error para {ticker}: {str(e)}")
     return None
 
-def get_price(ticker):
-    """Intentar obtener precio: Twelve Data primero, luego fallbacks"""
-    # 1. Intentar Twelve Data (PRINCIPAL - funciona en Render)
-    price = get_price_twelve_data(ticker)
-    if price is not None:
-        return price
+# Caché para precios (reduce llamadas a las APIs)
+price_cache = {}
+CACHE_DURATION = 60  # 60 segundos
+
+def get_price_with_cache(ticker):
+    """Obtener precio con caché para evitar exceder límites de API"""
+    # Verificar caché
+    if ticker in price_cache:
+        cached_price, cached_time = price_cache[ticker]
+        if time.time() - cached_time < CACHE_DURATION:
+            logger.info(f"💰 Usando caché para {ticker}: ${cached_price}")
+            return cached_price
     
-    # 2. Intentar yfinance (FALLBACK)
+    # 1. Intentar yfinance (PRINCIPAL)
     price = get_price_yfinance(ticker)
     if price is not None:
+        price_cache[ticker] = (price, time.time())
         return price
     
-    # 3. Intentar Alpha Vantage (FALLBACK 2)
+    # 2. Intentar Twelve Data (BACKUP 1)
+    price = get_price_twelve_data(ticker)
+    if price is not None:
+        price_cache[ticker] = (price, time.time())
+        return price
+    
+    # 3. Intentar Alpha Vantage (BACKUP 2)
     price = get_price_alpha_vantage(ticker)
     if price is not None:
+        price_cache[ticker] = (price, time.time())
         return price
     
     logger.warning(f"⚠️ No se pudo obtener precio para {ticker} de ninguna fuente")
     return None
 
+def get_price(ticker):
+    """Intentar obtener precio: yfinance primero, luego backups"""
+    return get_price_with_cache(ticker)
+
 def get_company_info(ticker):
-    """Obtener información de la empresa desde Twelve Data (principal)"""
-    # 1. Intentar Twelve Data (PRINCIPAL - funciona en Render)
-    try:
-        api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
-        if api_key:
-            logger.info(f"🔍 Intentando obtener info de {ticker} desde Twelve Data...")
-            # Usar el endpoint /quote para obtener información completa
-            url = f"https://api.twelvedata.com/quote?symbol={ticker}&apikey={api_key}"
-            response = requests.get(url, timeout=5)
-            data = response.json()
-            
-            # Log para depuración
-            logger.info(f"📊 Respuesta de Twelve Data para {ticker}: {data}")
-            
-            company_name = data.get('name', ticker)
-            # El sector puede venir en diferentes campos
-            sector = data.get('sector', data.get('exchange', 'Unknown'))
-            industry = data.get('industry', 'Unknown')
-            
-            # Si el sector sigue siendo Unknown, intentar con el endpoint /profile
-            if sector == 'Unknown' or sector == ticker:
-                logger.info(f"🔍 Intentando obtener perfil de {ticker} desde Twelve Data...")
-                profile_url = f"https://api.twelvedata.com/profile?symbol={ticker}&apikey={api_key}"
-                profile_response = requests.get(profile_url, timeout=5)
-                profile_data = profile_response.json()
-                logger.info(f"📊 Perfil de Twelve Data para {ticker}: {profile_data}")
-                
-                sector = profile_data.get('sector', sector)
-                industry = profile_data.get('industry', industry)
-            
-            logger.info(f"✅ Info obtenida de Twelve Data: {company_name}, {sector}, {industry}")
-            return {
-                'company_name': company_name,
-                'sector': sector,
-                'industry': industry
-            }
-    except Exception as e:
-        logger.warning(f"⚠️ Twelve Data falló para info de {ticker}: {str(e)}")
-    
-    # 2. Intentar yfinance (FALLBACK)
+    """Obtener información de la empresa desde yfinance"""
     try:
         logger.info(f"🔍 Intentando obtener info de {ticker} desde yfinance...")
         stock = yf.Ticker(ticker, session=yf_session)
@@ -242,7 +219,29 @@ def get_company_info(ticker):
     except Exception as e:
         logger.warning(f"⚠️ yfinance falló para info de {ticker}: {str(e)}")
     
-    # 3. Si todo falla
+    # Si yfinance falla, intentar Twelve Data
+    try:
+        api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
+        if api_key:
+            logger.info(f"🔍 Intentando obtener info de {ticker} desde Twelve Data...")
+            url = f"https://api.twelvedata.com/quote?symbol={ticker}&apikey={api_key}"
+            response = requests.get(url, timeout=5)
+            data = response.json()
+            
+            company_name = data.get('name', ticker)
+            sector = data.get('sector', data.get('exchange', 'Unknown'))
+            industry = data.get('industry', 'Unknown')
+            
+            logger.info(f"✅ Info obtenida de Twelve Data: {company_name}, {sector}, {industry}")
+            return {
+                'company_name': company_name,
+                'sector': sector,
+                'industry': industry
+            }
+    except Exception as e:
+        logger.warning(f"⚠️ Twelve Data falló para info de {ticker}: {str(e)}")
+    
+    # Si todo falla
     logger.warning(f"⚠️ No se pudo obtener info de {ticker} de ninguna fuente")
     return {
         'company_name': ticker,
@@ -338,7 +337,7 @@ def ticker_analysis(ticker):
                 'source': 'RSS Feed'
             })
         
-        # 2. Obtener precio (Twelve Data primero)
+        # 2. Obtener precio (con caché)
         price = get_price(ticker)
         price_available = price is not None
         price_history = []
@@ -364,7 +363,7 @@ def ticker_analysis(ticker):
         
         regime = classify_regime(ndi)
         
-        # 6. Obtener información de la empresa (Twelve Data primero)
+        # 6. Obtener información de la empresa
         company_info = get_company_info(ticker)
         company_name = company_info['company_name']
         sector = company_info['sector']
@@ -455,7 +454,22 @@ def get_prices(ticker):
         ticker = ticker.upper()
         logger.info(f"📊 Obteniendo historial de precios para {ticker}")
         
-        # Intentar Twelve Data primero
+        # Intentar yfinance primero
+        stock = yf.Ticker(ticker, session=yf_session)
+        hist = stock.history(period="30d", timeout=10)
+        if not hist.empty:
+            price_history = []
+            for date, row in hist.iterrows():
+                price_history.append({
+                    'date': date.strftime('%Y-%m-%d'),
+                    'close': float(row['Close'])
+                })
+            return jsonify({
+                'ticker': ticker,
+                'price_history': price_history
+            })
+        
+        # Fallback: Twelve Data
         api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
         if api_key:
             try:
@@ -478,22 +492,7 @@ def get_prices(ticker):
             except Exception as e:
                 logger.warning(f"⚠️ Twelve Data falló para historial de {ticker}: {str(e)}")
         
-        # Fallback: yfinance
-        stock = yf.Ticker(ticker, session=yf_session)
-        hist = stock.history(period="30d", timeout=10)
-        if not hist.empty:
-            price_history = []
-            for date, row in hist.iterrows():
-                price_history.append({
-                    'date': date.strftime('%Y-%m-%d'),
-                    'close': float(row['Close'])
-                })
-            return jsonify({
-                'ticker': ticker,
-                'price_history': price_history
-            })
-        else:
-            return jsonify({'error': 'No data available'}), 404
+        return jsonify({'error': 'No data available'}), 404
     except Exception as e:
         logger.error(f"❌ Error en /api/prices/{ticker}: {str(e)}")
         return jsonify({'error': str(e)}), 500
