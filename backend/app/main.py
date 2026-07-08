@@ -29,6 +29,27 @@ CORS(app, origins=[
     "https://signaliq-l8mi.onrender.com"
 ])
 
+# ============================================================
+# CONFIGURACIÓN DE YFINANCE CON SESIÓN PERSISTENTE
+# ============================================================
+
+import requests
+
+def get_yfinance_session():
+    """Crear una sesión persistente para yfinance con headers"""
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive'
+    })
+    return session
+
+# Crear la sesión al inicio
+yf_session = get_yfinance_session()
+
 # Manejar solicitudes OPTIONS para CORS
 @app.after_request
 def after_request(response):
@@ -170,26 +191,28 @@ def get_price(ticker):
 company_cache = {}
 
 def get_company_info(ticker):
-    """Obtener información de la empresa desde yfinance con caché"""
-    if ticker in company_cache:
-        return company_cache[ticker]
-    
+    """Obtener información de la empresa desde yfinance con logs detallados"""
     try:
+        logger.info(f"🔍 Intentando obtener info de {ticker}...")
         stock = yf.Ticker(ticker)
         info = stock.info
         
-        result = {
-            'company_name': info.get('longName', info.get('shortName', ticker)),
-            'sector': info.get('sector', 'Unknown'),
-            'industry': info.get('industry', 'Unknown')
+        # Log completo de la info para depuración
+        logger.info(f"📊 Info completa de {ticker}: {info}")
+        
+        company_name = info.get('longName', info.get('shortName', ticker))
+        sector = info.get('sector', 'Unknown')
+        industry = info.get('industry', 'Unknown')
+        
+        logger.info(f"✅ Info obtenida: {company_name}, {sector}, {industry}")
+        
+        return {
+            'company_name': company_name,
+            'sector': sector,
+            'industry': industry
         }
-        
-        company_cache[ticker] = result
-        logger.info(f"📊 Info de {ticker}: {result['company_name']}")
-        
-        return result
     except Exception as e:
-        logger.warning(f"⚠️ No se pudo obtener info de {ticker}: {str(e)}")
+        logger.error(f"❌ Error al obtener info de {ticker}: {str(e)}")
         return {
             'company_name': ticker,
             'sector': 'Unknown',
