@@ -13,6 +13,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useSignalAnalysis } from '../hooks/useSignalAnalysis';
+import { getPricesFromYahoo, getPriceFromYahoo } from '../services/yahoo-finance-service';
 
 // ==================== CONFIGURACIÓN ====================
 const API_BASE = 'https://signaliq-api.onrender.com';
@@ -27,8 +28,6 @@ const getHeaders = () => ({
 const api = {
   signals: (tickers: string[]) => 
     `${API_BASE}/api/signals-live?tickers=${tickers.join(',')}`,
-  prices: (ticker: string) => 
-    `${API_BASE}/api/prices/${ticker}`,
 };
 
 // ==================== CONSTANTES ====================
@@ -180,10 +179,10 @@ export default function Dashboard() {
       setLoading(true);
       setError('');
 
+      // 1. Obtener NDI del backend
       const url = api.signals(defaultTickers);
       console.log('📊 Fetching URL:', url);
 
-      // ✅ Usar headers con API Key
       const res = await fetch(url, { headers: getHeaders() });
       console.log('📊 Response status:', res.status);
 
@@ -198,18 +197,26 @@ export default function Dashboard() {
       console.log('📊 Data received:', data);
 
       if (data?.success && Array.isArray(data.signals) && data.signals.length > 0) {
+        const tickers = data.signals.map((item: any) => item.ticker);
+        
+        // 2. Obtener precios desde Yahoo Finance (frontend - IP del usuario)
+        console.log('📊 Obteniendo precios desde Yahoo Finance...');
+        const priceData = await getPricesFromYahoo(tickers);
+        console.log('📊 Precios obtenidos:', priceData);
+
+        // 3. Combinar NDI + precios
         const formatted = data.signals.map((item: any) => {
-          console.log(`📊 ${item.ticker}: sentiment_zscore=${item.sentiment_zscore}, momentum_zscore=${item.momentum_zscore}`);
-          
+          const priceInfo = priceData[item.ticker];
           return {
             ticker: item.ticker,
             ndi: item.ndi || 0,
             sentiment: item.sentiment_zscore ?? 0,
             momentum: item.momentum_zscore ?? 0,
-            price: item.current_price || 0,
+            price: priceInfo?.price || 0,
             sector: sectorMap[item.ticker] || 'Other',
             confidence: item.confidence || 70,
             regime: item.regime || 'No Data',
+            companyName: priceInfo?.companyName || item.ticker,
           };
         });
 
@@ -250,17 +257,19 @@ export default function Dashboard() {
     };
   }, [fetchSignals]);
 
+  // Historial de precios desde Yahoo Finance (frontend)
   useEffect(() => {
     const fetchPriceHistory = async () => {
       if (!selectedTicker) return;
 
       try {
-        // ✅ Usar headers con API Key
-        const res = await fetch(api.prices(selectedTicker), { headers: getHeaders() });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data?.price_history?.length) {
-          setPriceHistory(data.price_history);
+        console.log(`📊 Obteniendo historial de precios para ${selectedTicker} desde Yahoo Finance...`);
+        const priceData = await getPriceFromYahoo(selectedTicker);
+        if (priceData?.history && priceData.history.length > 0) {
+          setPriceHistory(priceData.history);
+          console.log(`📊 Historial de ${selectedTicker}: ${priceData.history.length} registros`);
+        } else {
+          console.warn(`⚠️ No se encontró historial para ${selectedTicker}`);
         }
       } catch (err) {
         console.error('Error fetching price history:', err);
