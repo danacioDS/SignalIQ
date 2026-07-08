@@ -195,26 +195,26 @@ def ticker_analysis(ticker):
             })
         
         # 2. Intentar obtener precio (yfinance)
-        price_data = {
-            'available': False,
-            'price': None,
-            'hist': []
-        }
+        price_available = False
+        price = None
+        price_history = []
         
         try:
             stock = yf.Ticker(ticker)
-            hist = stock.history(period="60d")
+            hist = stock.history(period="5d")
             if not hist.empty:
-                price_data['available'] = True
-                price_data['price'] = hist['Close'].iloc[-1]
-                price_data['hist'] = hist['Close'].tolist()
-                logger.info(f"✅ Precio obtenido para {ticker}: {price_data['price']}")
+                price_available = True
+                price = hist['Close'].iloc[-1]
+                price_history = hist['Close'].tolist()
+                logger.info(f"💰 Precio obtenido para {ticker}: ${price}")
+            else:
+                logger.warning(f"⚠️ No hay datos de precio para {ticker}")
         except Exception as e:
-            logger.warning(f"⚠️ Error al obtener precio para {ticker}: {str(e)}")
+            logger.error(f"❌ Error al obtener precio para {ticker}: {str(e)}")
         
-        # 3. Calcular z-scores usando Layer 3
+        # 3. Calcular z-scores
         sentiment_zscore = calculate_sentiment_zscore(news_data['sentiment'])
-        momentum_zscore = calculate_momentum_zscore(price_data['hist']) if price_data['available'] else 0.0
+        momentum_zscore = calculate_momentum_zscore(price_history) if price_available else 0.0
         
         # 4. Calcular NDI (Layer 4)
         ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
@@ -229,7 +229,7 @@ def ticker_analysis(ticker):
         sector = 'Unknown'
         industry = 'Unknown'
         try:
-            if price_data['available']:
+            if price_available:
                 info = yf.Ticker(ticker).info
                 company_name = info.get('longName', info.get('shortName', ticker))
                 sector = info.get('sector', 'Unknown')
@@ -243,12 +243,12 @@ def ticker_analysis(ticker):
             'companyName': company_name,
             'sector': sector,
             'industry': industry,
-            'price_unavailable': not price_data['available'],
+            'price_unavailable': not price_available,
             'ndi': round(ndi, 3),
             'statusLabel': regime['regime'],
             'statusColor': regime['color'],
             'updatedAt': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
-            'price': price_data['price'] if price_data['available'] else None,
+            'price': price,
             'quantitativeMetrics': {
                 'sentiment': round(sentiment_zscore, 3),
                 'momentum': round(momentum_zscore, 3),
@@ -307,7 +307,7 @@ def ticker_analysis(ticker):
         }
         
         # 7. Si no hay precio, agregar mensaje adicional
-        if not price_data['available']:
+        if not price_available:
             response['message'] = "Precio no disponible temporalmente, pero las noticias se muestran correctamente."
         
         return jsonify(response)
