@@ -20,20 +20,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend', 'app
 
 app = Flask(__name__)
 
-# Configurar CORS para permitir solicitudes desde Vercel
+# Configurar CORS correctamente (SIN duplicar cabeceras)
 CORS(app, origins=[
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://signaliq-zeta-ten.vercel.app",
     "https://signaliq-zeta.vercel.app",
     "https://signaliq-l8mi.onrender.com"
-])
+], supports_credentials=True)
 
 # ============================================================
 # CONFIGURACIÓN DE YFINANCE CON SESIÓN PERSISTENTE
 # ============================================================
-
-import requests
 
 def get_yfinance_session():
     """Crear una sesión persistente para yfinance con headers"""
@@ -50,10 +48,10 @@ def get_yfinance_session():
 # Crear la sesión al inicio
 yf_session = get_yfinance_session()
 
-# Manejar solicitudes OPTIONS para CORS
+# Manejar solicitudes OPTIONS para CORS (sin duplicar Access-Control-Allow-Origin)
 @app.after_request
 def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')
+    # No agregar Access-Control-Allow-Origin aquí porque CORS ya lo maneja
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
@@ -448,6 +446,56 @@ def ticker_analysis(ticker):
         
     except Exception as e:
         logger.error(f"❌ Error en ticker_analysis: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/prices/<ticker>')
+def get_prices(ticker):
+    """Obtener historial de precios para el gráfico"""
+    try:
+        ticker = ticker.upper()
+        logger.info(f"📊 Obteniendo historial de precios para {ticker}")
+        
+        # Intentar Twelve Data primero
+        api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
+        if api_key:
+            try:
+                url = f"https://api.twelvedata.com/time_series?symbol={ticker}&interval=1day&outputsize=30&apikey={api_key}"
+                response = requests.get(url, timeout=10)
+                data = response.json()
+                
+                if 'values' in data:
+                    price_history = []
+                    for item in data['values']:
+                        price_history.append({
+                            'date': item['datetime'][:10],
+                            'close': float(item['close'])
+                        })
+                    price_history.reverse()
+                    return jsonify({
+                        'ticker': ticker,
+                        'price_history': price_history
+                    })
+            except Exception as e:
+                logger.warning(f"⚠️ Twelve Data falló para historial de {ticker}: {str(e)}")
+        
+        # Fallback: yfinance
+        stock = yf.Ticker(ticker, session=yf_session)
+        hist = stock.history(period="30d", timeout=10)
+        if not hist.empty:
+            price_history = []
+            for date, row in hist.iterrows():
+                price_history.append({
+                    'date': date.strftime('%Y-%m-%d'),
+                    'close': float(row['Close'])
+                })
+            return jsonify({
+                'ticker': ticker,
+                'price_history': price_history
+            })
+        else:
+            return jsonify({'error': 'No data available'}), 404
+    except Exception as e:
+        logger.error(f"❌ Error en /api/prices/{ticker}: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/tickers')
