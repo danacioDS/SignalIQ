@@ -191,33 +191,56 @@ def get_price(ticker):
 company_cache = {}
 
 def get_company_info(ticker):
-    """Obtener información de la empresa desde yfinance con logs detallados"""
+    """Obtener información de la empresa: primero yfinance, luego Twelve Data como fallback"""
+    # 1. Intentar con yfinance (usando la sesión persistente)
     try:
-        logger.info(f"🔍 Intentando obtener info de {ticker}...")
-        stock = yf.Ticker(ticker)
+        logger.info(f"🔍 Intentando obtener info de {ticker} desde yfinance...")
+        stock = yf.Ticker(ticker, session=yf_session)
         info = stock.info
         
-        # Log completo de la info para depuración
-        logger.info(f"📊 Info completa de {ticker}: {info}")
+        company_name = info.get('longName', info.get('shortName', None))
+        sector = info.get('sector', None)
+        industry = info.get('industry', None)
         
-        company_name = info.get('longName', info.get('shortName', ticker))
-        sector = info.get('sector', 'Unknown')
-        industry = info.get('industry', 'Unknown')
-        
-        logger.info(f"✅ Info obtenida: {company_name}, {sector}, {industry}")
-        
-        return {
-            'company_name': company_name,
-            'sector': sector,
-            'industry': industry
-        }
+        if company_name:
+            logger.info(f"✅ Info obtenida de yfinance: {company_name}, {sector}, {industry}")
+            return {
+                'company_name': company_name,
+                'sector': sector or 'Unknown',
+                'industry': industry or 'Unknown'
+            }
     except Exception as e:
-        logger.error(f"❌ Error al obtener info de {ticker}: {str(e)}")
-        return {
-            'company_name': ticker,
-            'sector': 'Unknown',
-            'industry': 'Unknown'
-        }
+        logger.warning(f"⚠️ yfinance falló para info de {ticker}: {str(e)}")
+    
+    # 2. Fallback: Twelve Data API (dinámico, no hardcode)
+    try:
+        api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
+        if api_key:
+            logger.info(f"🔍 Intentando obtener info de {ticker} desde Twelve Data...")
+            url = f"https://api.twelvedata.com/quote?symbol={ticker}&apikey={api_key}"
+            response = requests.get(url, timeout=5)
+            data = response.json()
+            
+            company_name = data.get('name', ticker)
+            sector = data.get('sector', 'Unknown')
+            industry = data.get('industry', 'Unknown')
+            
+            logger.info(f"✅ Info obtenida de Twelve Data: {company_name}, {sector}, {industry}")
+            return {
+                'company_name': company_name,
+                'sector': sector,
+                'industry': industry
+            }
+    except Exception as e:
+        logger.warning(f"⚠️ Twelve Data falló para info de {ticker}: {str(e)}")
+    
+    # 3. Si todo falla, devolver datos básicos (sin hardcode)
+    logger.warning(f"⚠️ No se pudo obtener info de {ticker} de ninguna fuente")
+    return {
+        'company_name': ticker,
+        'sector': 'Unknown',
+        'industry': 'Unknown'
+    }
 
 
 # ============================================================
