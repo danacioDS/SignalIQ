@@ -192,13 +192,29 @@ def get_company_info(ticker):
         api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
         if api_key:
             logger.info(f"🔍 Intentando obtener info de {ticker} desde Twelve Data...")
+            # Usar el endpoint /quote para obtener información completa
             url = f"https://api.twelvedata.com/quote?symbol={ticker}&apikey={api_key}"
             response = requests.get(url, timeout=5)
             data = response.json()
             
+            # Log para depuración
+            logger.info(f"📊 Respuesta de Twelve Data para {ticker}: {data}")
+            
             company_name = data.get('name', ticker)
-            sector = data.get('sector', 'Unknown')
+            # El sector puede venir en diferentes campos
+            sector = data.get('sector', data.get('exchange', 'Unknown'))
             industry = data.get('industry', 'Unknown')
+            
+            # Si el sector sigue siendo Unknown, intentar con el endpoint /profile
+            if sector == 'Unknown' or sector == ticker:
+                logger.info(f"🔍 Intentando obtener perfil de {ticker} desde Twelve Data...")
+                profile_url = f"https://api.twelvedata.com/profile?symbol={ticker}&apikey={api_key}"
+                profile_response = requests.get(profile_url, timeout=5)
+                profile_data = profile_response.json()
+                logger.info(f"📊 Perfil de Twelve Data para {ticker}: {profile_data}")
+                
+                sector = profile_data.get('sector', sector)
+                industry = profile_data.get('industry', industry)
             
             logger.info(f"✅ Info obtenida de Twelve Data: {company_name}, {sector}, {industry}")
             return {
