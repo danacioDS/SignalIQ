@@ -31,6 +31,68 @@ CORS(app, origins=[
     "https://signaliq-l8mi.onrender.com"
 ], supports_credentials=True)
 
+
+from functools import lru_cache
+from datetime import datetime, timedelta
+
+# ============================================================
+# CACHÉ PARA /api/signals-live
+# ============================================================
+from functools import lru_cache
+from datetime import datetime, timedelta
+
+# Configuración del caché
+CACHE_TTL = 60  # 60 segundos (1 minuto)
+cache_timestamps = {}  # Para rastrear cuándo se creó cada caché
+
+@lru_cache(maxsize=128)
+def get_cached_signals(tickers_str: str):
+    """Obtener señales con caché"""
+    tickers = tickers_str.split(',')
+    logger.info(f"📊 CACHÉ: Procesando {len(tickers)} tickers")
+    
+    results = []
+    for ticker in tickers:
+        try:
+            news_data = process_news_for_ticker(ticker)
+            sentiment_zscore = calculate_sentiment_zscore(news_data['sentiment'])
+            momentum_zscore = 0.0
+            ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
+            if ndi is None:
+                ndi = 0.0
+            
+            regime = classify_regime(ndi)
+            price = get_price_yfinance(ticker)
+            
+            results.append({
+                'ticker': ticker,
+                'ndi': ndi,
+                'sentiment_zscore': sentiment_zscore,
+                'momentum_zscore': momentum_zscore,
+                'current_price': price,
+                'regime': regime['regime'],
+                'confidence': 70
+            })
+        except Exception as e:
+            logger.error(f"Error procesando {ticker}: {e}")
+            results.append({
+                'ticker': ticker,
+                'ndi': 0,
+                'sentiment_zscore': 0,
+                'momentum_zscore': 0,
+                'current_price': None,
+                'regime': 'NEUTRAL',
+                'confidence': 0
+            })
+    
+    return {
+        'success': True,
+        'signals': results,
+        'count': len(results),
+        'cached': True,
+        'timestamp': datetime.now().isoformat()
+    }
+
 # ============================================================
 # CONFIGURACIÓN DE YFINANCE CON SESIÓN PERSISTENTE
 # ============================================================
@@ -170,53 +232,29 @@ def health():
 
 @app.route('/api/signals-live')
 def signals_live():
-    """Endpoint para el dashboard de señales en vivo"""
+    """Endpoint para el dashboard de señales en vivo (con caché)"""
     tickers_param = request.args.get('tickers', '')
     ticker_list = [t.strip() for t in tickers_param.split(',') if t.strip()]
     
     if not ticker_list:
         return jsonify({'success': False, 'error': 'No tickers provided'}), 400
     
-    results = []
-    for ticker in ticker_list:
-        try:
-            news_data = process_news_for_ticker(ticker)
-            sentiment_zscore = calculate_sentiment_zscore(news_data['sentiment'])
-            momentum_zscore = 0.0
-            ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
-            if ndi is None:
-                ndi = 0.0
-            
-            regime = classify_regime(ndi)
-            
-            # ✅ Obtener precio desde Yahoo Finance
-            price = get_price_yfinance(ticker)
-            
-            results.append({
-                'ticker': ticker,
-                'ndi': ndi,
-                'sentiment_zscore': sentiment_zscore,
-                'momentum_zscore': momentum_zscore,
-                'current_price': price,
-                'regime': regime['regime'],
-                'confidence': 70
-            })
-        except Exception as e:
-            logger.error(f"Error procesando {ticker}: {e}")
-            results.append({
-                'ticker': ticker,
-                'ndi': 0,
-                'sentiment_zscore': 0,
-                'momentum_zscore': 0,
-                'current_price': None,
-                'regime': 'NEUTRAL',
-                'confidence': 0
-            })
+    # Ordenar tickers para que el caché funcione correctamente
+    tickers_str = ','.join(sorted(ticker_list))
+    
+    # Obtener del caché (o procesar si no existe)
+    result = get_cached_signals(tickers_str)
+    
+    # Filtrar solo los tickers solicitados (en caso de que el caché tenga más)
+    ticker_set = set(ticker_list)
+    filtered_signals = [s for s in result['signals'] if s['ticker'] in ticker_set]
     
     return jsonify({
         'success': True,
-        'signals': results,
-        'count': len(results)
+        'signals': filtered_signals,
+        'count': len(filtered_signals),
+        'cached': result.get('cached', False),
+        'cache_timestamp': result.get('timestamp')
     })
 
 @app.route('/api/ticker/analysis/<ticker>')
