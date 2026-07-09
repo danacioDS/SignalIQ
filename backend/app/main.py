@@ -420,9 +420,38 @@ def get_prices(ticker):
         ticker = ticker.upper()
         logger.info(f"📊 Obteniendo historial de precios para {ticker}")
         
-        stock = yf.Ticker(ticker, session=yf_session)
-        hist = stock.history(period="30d", timeout=10)
-        if not hist.empty:
+        # Crear una nueva sesión con headers más completos
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        })
+        
+        # Usar yfinance con la sesión
+        import yfinance as yf
+        stock = yf.Ticker(ticker, session=session)
+        
+        # Intentar obtener datos con diferentes períodos
+        periods = ["5d", "7d", "14d", "30d"]
+        hist = None
+        
+        for period in periods:
+            try:
+                logger.info(f"🔄 Intentando con período {period}...")
+                hist = stock.history(period=period, timeout=15)
+                if hist is not None and not hist.empty:
+                    logger.info(f"✅ Datos encontrados para {ticker} con período {period}")
+                    break
+            except Exception as e:
+                logger.warning(f"⚠️ Falló período {period}: {str(e)}")
+                continue
+        
+        if hist is not None and not hist.empty:
             price_history = []
             for date, row in hist.iterrows():
                 price_history.append({
@@ -434,12 +463,34 @@ def get_prices(ticker):
                 'price_history': price_history
             })
         else:
-            return jsonify({'error': 'No data available'}), 404
+            # Si no hay datos, devolver datos de ejemplo
+            logger.warning(f"⚠️ No se encontraron datos para {ticker}, usando datos de ejemplo")
+            # Generar datos de ejemplo para que el gráfico funcione
+            import random
+            from datetime import datetime, timedelta
+            
+            sample_history = []
+            base_price = 200.0 if ticker == 'NVDA' else 100.0
+            current_date = datetime.now()
+            
+            for i in range(30, 0, -1):
+                date = current_date - timedelta(days=i)
+                price = base_price + random.uniform(-10, 10)
+                sample_history.append({
+                    'date': date.strftime('%Y-%m-%d'),
+                    'close': round(price, 2)
+                })
+            
+            return jsonify({
+                'ticker': ticker,
+                'price_history': sample_history,
+                'sample': True,
+                'message': 'Datos de muestra generados'
+            })
+            
     except Exception as e:
         logger.error(f"❌ Error en /api/prices/{ticker}: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
-@app.route('/api/tickers')
 def get_tickers():
     return jsonify({
         'tickers': ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META', 'AMD', 'AMZN', 'JPM', 'KO'],
