@@ -940,8 +940,7 @@ def get_cached_signals(tickers_str: str):
 @limiter.limit(Config.RATE_LIMIT_ANALYSIS)
 def get_ticker_data(ticker):
     """
-    Endpoint específico para obtener datos de un ticker individual
-    Este es el endpoint que el frontend está solicitando
+    Endpoint optimizado con cache por componente
     """
     try:
         ticker = ticker.strip().upper()
@@ -954,44 +953,82 @@ def get_ticker_data(ticker):
                 'supported_tickers': list(SUPPORTED_TICKERS)
             }), 400
         
-        # Verificar caché para este ticker
-        cache_key = get_cache_key('ticker', ticker)
-        cached = get_from_cache('ticker', cache_key)
-        if cached is not None:
-            logger.info(f"📊 CACHÉ: Datos para {ticker}")
-            if hasattr(g, 'metrics'):
-                g.metrics.cache_hit = True
-            return jsonify(cached)
+        start_time = time.time()
         
-        # Obtener datos
-        news_data = get_news(ticker)
-        sentiment_zscore = calculate_sentiment_zscore(news_data.get('sentiment'))
+        # 1. Obtener precio (TTL: 15s)
+        price_cache_key = get_cache_key('price', ticker)
+        price = get_from_cache('price', price_cache_key)
+        price_cached = price is not None
         
-        price_history = get_price_history(ticker, days=30)
-        momentum_zscore = calculate_momentum_zscore(price_history)
+        if not price_cached:
+            price = get_price(ticker)
+            if price is not None:
+                set_in_cache('price', price_cache_key, price)
         
-        ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
-        if ndi is None:
-            ndi = 0.0
+        # 2. Obtener noticias (TTL: 300s)
+        news_cache_key = get_cache_key('news', ticker)
+        news_data = get_from_cache('news', news_cache_key)
+        news_cached = news_data is not None
         
-        # Obtener precio actual
-        price = get_price(ticker)
+        if not news_cached:
+            news_data = get_news(ticker)
+            if news_data and news_data.get('sentiment') is not None:
+                set_in_cache('news', news_cache_key, news_data)
         
-        # Clasificar régimen
-        regime_info = classify_regime(ndi)
+        # 3. Calcular sentimiento (TTL: 900s)
+        sentiment_cache_key = get_cache_key('sentiment', ticker)
+        sentiment_zscore = get_from_cache('sentiment', sentiment_cache_key)
+        sentiment_cached = sentiment_zscore is not None
         
-        # Calcular confianza
+        if not sentiment_cached:
+            sentiment_zscore = calculate_sentiment_zscore(news_data.get('sentiment'))
+            if sentiment_zscore != 0:
+                set_in_cache('sentiment', sentiment_cache_key, sentiment_zscore)
+        
+        # 4. Calcular momentum (TTL: 60s)
+        momentum_cache_key = get_cache_key('momentum', ticker)
+        momentum_zscore = get_from_cache('momentum', momentum_cache_key)
+        momentum_cached = momentum_zscore is not None
+        
+        if not momentum_cached:
+            price_history = get_price_history(ticker, days=30)
+            momentum_zscore = calculate_momentum_zscore(price_history)
+            if momentum_zscore != 0:
+                set_in_cache('momentum', momentum_cache_key, momentum_zscore)
+        
+        # 5. Calcular NDI (TTL: 900s - depende de sentimiento y momentum)
+        ndi_cache_key = get_cache_key('ndi', ticker)
+        ndi = get_from_cache('ndi', ndi_cache_key)
+        ndi_cached = ndi is not None
+        
+        if not ndi_cached:
+            ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
+            if ndi is None:
+                ndi = 0.0
+            set_in_cache('ndi', ndi_cache_key, ndi)
+        
+        # 6. Clasificar régimen (TTL: 3600s)
+        regime_cache_key = get_cache_key('regime', ticker)
+        regime_info = get_from_cache('regime', regime_cache_key)
+        regime_cached = regime_info is not None
+        
+        if not regime_cached:
+            regime_info = classify_regime(ndi)
+            set_in_cache('regime', regime_cache_key, regime_info)
+        
+        # 7. Calcular confianza
         confidence = calculate_confidence(
             sentiment_zscore,
             momentum_zscore,
-            len(news_data.get('headlines', [])),
-            len(price_history)
+            len(news_data.get('headlines', [])) if news_data else 0,
+            30  # Asumimos 30 días de historial
         )
         
-        # Información de la empresa
         company_info = get_company_info(ticker)
         
-        # Preparar respuesta
+        response_time = round((time.time() - start_time) * 1000, 2)
+        
+        # Preparar respuesta con metadata de caché
         response = {
             'ticker': ticker,
             'company_name': company_info['company_name'],
@@ -1005,14 +1042,20 @@ def get_ticker_data(ticker):
             'signal': regime_info['label'],
             'color': regime_info['color'],
             'confidence': confidence,
-            'news_count': len(news_data.get('headlines', [])),
+            'news_count': len(news_data.get('headlines', [])) if news_data else 0,
             'market_status': get_market_status(),
             'timestamp': datetime.now(timezone.utc).isoformat(),
+            'cache': {
+                'price': price_cached,
+                'news': news_cached,
+                'sentiment': sentiment_cached,
+                'momentum': momentum_cached,
+                'ndi': ndi_cached,
+                'regime': regime_cached
+            },
+            'response_time_ms': response_time,
             'disclaimer': FINANCIAL_DISCLAIMER
         }
-        
-        # Guardar en caché
-        set_in_cache('ticker', cache_key, response)
         
         return jsonify(response)
         
