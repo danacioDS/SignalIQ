@@ -176,23 +176,31 @@ def get_request_id():
 
 
 # ============================================================
-# LOGGING CON REQUEST ID
+# LOGGING CON REQUEST ID (CORREGIDO)
 # ============================================================
 class RequestIdFilter(logging.Filter):
     def filter(self, record):
         try:
-            record.request_id = getattr(g, 'request_id', 'unknown')
+            # Intentar obtener request_id del contexto de Flask (g)
+            record.request_id = getattr(g, 'request_id', 'system')
         except RuntimeError:
+            # Si no hay contexto de solicitud (ej: durante el arranque)
             record.request_id = 'system'
         return True
 
-
+# Configuración del logger
 logging.basicConfig(
     level=logging.INFO,
     format='[%(request_id)s] %(levelname)s: %(message)s'
 )
+
+# Obtener el logger raíz y agregar el filtro
 logger = logging.getLogger(__name__)
 logger.addFilter(RequestIdFilter())
+
+# También agregar el filtro al logger raíz para que todas las salidas tengan request_id
+root_logger = logging.getLogger()
+root_logger.addFilter(RequestIdFilter())
 
 
 # ============================================================
