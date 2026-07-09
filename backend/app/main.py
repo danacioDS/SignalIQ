@@ -61,6 +61,7 @@ def get_price_alphavantage(ticker):
     """Obtener precio desde Alpha Vantage"""
     try:
         api_key = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
+        logger.info(f"🔍 Alpha Vantage key configured={bool(api_key)}")
         if not api_key:
             logger.warning(f"⚠️ No hay API key de Alpha Vantage para {ticker}")
             return None
@@ -68,7 +69,8 @@ def get_price_alphavantage(ticker):
         url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
         response = requests.get(url, timeout=10)
         
-        logger.info(f"🔍 AlphaVantage status={response.status_code} body={response.text[:300]}")
+        logger.info(f"🔍 AlphaVantage status={response.status_code}")
+        logger.info(f"🔍 AlphaVantage body={response.text}")
         
         if response.status_code == 200:
             data = response.json()
@@ -87,6 +89,7 @@ def get_price_twelvedata(ticker):
     """Obtener precio desde Twelve Data"""
     try:
         api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
+        logger.info(f"🔍 Twelve Data key configured={bool(api_key)}")
         if not api_key:
             logger.warning(f"⚠️ No hay API key de Twelve Data para {ticker}")
             return None
@@ -94,7 +97,8 @@ def get_price_twelvedata(ticker):
         url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={api_key}"
         response = requests.get(url, timeout=10)
         
-        logger.info(f"🔍 TwelveData status={response.status_code} body={response.text[:300]}")
+        logger.info(f"🔍 TwelveData status={response.status_code}")
+        logger.info(f"🔍 TwelveData body={response.text}")
         
         if response.status_code == 200:
             data = response.json()
@@ -439,6 +443,9 @@ def get_prices(ticker):
         api_key_av = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
         api_key_td = os.environ.get('TWELVE_DATA_API_KEY', '')
         
+        logger.info(f"🔍 Alpha Vantage key configured={bool(api_key_av)}")
+        logger.info(f"🔍 Twelve Data key configured={bool(api_key_td)}")
+        
         # ============================================================
         # 1. INTENTAR CON ALPHA VANTAGE
         # ============================================================
@@ -447,7 +454,8 @@ def get_prices(ticker):
             url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&outputsize=compact&apikey={api_key_av}"
             response = requests.get(url, timeout=15)
             
-            logger.info(f"🔍 AlphaVantage status={response.status_code} body={response.text[:300]}")
+            logger.info(f"🔍 AlphaVantage status={response.status_code}")
+            logger.info(f"🔍 AlphaVantage body={response.text}")
             
             if response.status_code == 200:
                 data = response.json()
@@ -482,7 +490,8 @@ def get_prices(ticker):
             url = f"https://api.twelvedata.com/time_series?symbol={ticker}&interval=1day&outputsize=30&apikey={api_key_td}"
             response = requests.get(url, timeout=15)
             
-            logger.info(f"🔍 TwelveData status={response.status_code} body={response.text[:300]}")
+            logger.info(f"🔍 TwelveData status={response.status_code}")
+            logger.info(f"🔍 TwelveData body={response.text}")
             
             if response.status_code == 200:
                 data = response.json()
@@ -526,6 +535,27 @@ def get_tickers():
         'tickers': ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META', 'AMD', 'AMZN', 'JPM', 'KO'],
         'count': 10
     })
+
+def get_company_info(ticker):
+    """Obtener información de la empresa desde yfinance"""
+    try:
+        import yfinance as yf
+        stock = yf.Ticker(ticker)
+        # Intentar obtener info con timeout
+        info = stock.info
+        return {
+            'company_name': info.get('longName', info.get('shortName', ticker)),
+            'sector': info.get('sector', 'Unknown'),
+            'industry': info.get('industry', 'Unknown')
+        }
+    except Exception as e:
+        logger.warning(f"⚠️ No se pudo obtener info de {ticker}: {str(e)}")
+        return {
+            'company_name': ticker,
+            'sector': 'Unknown',
+            'industry': 'Unknown'
+        }    
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
