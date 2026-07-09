@@ -15,7 +15,7 @@ import time
 # Importación directa (layers ahora está en app/)
 from layers.layer4_measurement import calculate_narrative_divergence_index
 from news_pipeline import process_news_for_ticker
-from yahoo_proxy import yahoo_proxy
+from app.yahoo_proxy import yahoo_proxy
 app.register_blueprint(yahoo_proxy)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend', 'app'))
