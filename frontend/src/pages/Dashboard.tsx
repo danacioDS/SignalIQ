@@ -263,7 +263,19 @@ export default function Dashboard() {
         const priceData = await getPriceFromYahoo(selectedTicker);
         if (priceData?.history && priceData.history.length > 0) {
           setPriceHistory(priceData.history);
-          console.log(`📊 Historial de ${selectedTicker}: ${priceData.history.length} registros`);
+          
+          // ✅ OBTENER EL PRECIO ACTUAL DEL HISTORIAL
+          const lastPrice = priceData.history[priceData.history.length - 1].close;
+          console.log(`📊 Precio actual de ${selectedTicker}: $${lastPrice}`);
+          
+          // Actualizar el precio en signals
+          setSignals(prevSignals => 
+            prevSignals.map(s => 
+              s.ticker === selectedTicker 
+                ? { ...s, price: lastPrice }
+                : s
+            )
+          );
         } else {
           console.warn(`⚠️ No se encontró historial para ${selectedTicker}`);
         }
