@@ -31,15 +31,14 @@ const FALLBACK_DATA: Record<string, PriceData> = {
  * Obtiene datos de un ticker desde Yahoo Finance
  * Usa la API pública de Yahoo Finance (no requiere API key)
  */
-/*** */
 export const getPriceFromYahoo = async (ticker: string): Promise<PriceData | null> => {
   try {
-    // Usar el endpoint existente /api/prices/<ticker>
-    const url = `https://signaliq-backend.onrender.com/api/prices/${ticker}`;
-    
+    const url = `https://signaliq-backend.onrender.com/api/yahoo-price/${ticker}`;
+
     const response = await fetch(url, {
       headers: {
-        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
       }
     });
     
@@ -49,18 +48,43 @@ export const getPriceFromYahoo = async (ticker: string): Promise<PriceData | nul
     
     const data = await response.json();
     
-    // Extraer el precio del historial (el último elemento)
-    const priceHistory = data.price_history || [];
-    const lastPrice = priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].close : 0;
+    if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+      throw new Error('No se encontraron datos');
+    }
+    
+    const result = data.chart.result[0];
+    const meta = result.meta;
+    
+    // Obtener precio actual
+    const price = meta.regularMarketPrice || meta.previousClose || 0;
+    const previousClose = meta.previousClose || price;
+    const change = price - previousClose;
+    const changePercent = previousClose > 0 ? (change / previousClose) * 100 : 0;
+    
+    // Obtener historial (últimos 30 días)
+    const history: Array<{ date: string; close: number }> = [];
+    if (result.timestamp && result.indicators?.quote?.[0]?.close) {
+      const timestamps = result.timestamp;
+      const closes = result.indicators.quote[0].close;
+      for (let i = 0; i < Math.min(timestamps.length, 30); i++) {
+        if (closes[i] !== null) {
+          const date = new Date(timestamps[i] * 1000);
+          history.push({
+            date: date.toISOString().split('T')[0],
+            close: closes[i],
+          });
+        }
+      }
+    }
     
     return {
       ticker: ticker,
-      price: lastPrice,
-      change: 0, // No tenemos cambio en este endpoint
-      changePercent: 0, // No tenemos cambio en este endpoint
-      companyName: ticker, // Podríamos obtenerlo de otro endpoint
-      sector: 'Unknown', // Podríamos obtenerlo de otro endpoint
-      history: priceHistory,
+      price: price,
+      change: change,
+      changePercent: changePercent,
+      companyName: meta.longName || meta.shortName || ticker,
+      sector: meta.sector || 'Unknown',
+      history: history,
     };
     
   } catch (error) {
@@ -76,7 +100,7 @@ export const getPriceFromYahoo = async (ticker: string): Promise<PriceData | nul
     return null;
   }
 };
-/*** */
+
 /**
  * Obtiene precios e historial de múltiples tickers desde Yahoo Finance
  */
