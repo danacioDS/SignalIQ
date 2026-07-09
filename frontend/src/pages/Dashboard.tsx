@@ -13,14 +13,13 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useSignalAnalysis } from '../hooks/useSignalAnalysis';
-import { getPricesFromYahoo, getPriceFromYahoo } from '../services/yahoo-finance-service';
+import { getPriceFromYahoo } from '../services/yahoo-finance-service';
 
 // ==================== CONFIGURACIÓN ====================
 const API_BASE = 'https://signaliq-api.onrender.com';
 const REFRESH_INTERVAL = 5 * 60 * 1000;
 
 // ✅ Headers para autenticación
-
 const getHeaders = () => ({
   'Content-Type': 'application/json',
 });
@@ -179,7 +178,7 @@ export default function Dashboard() {
       setLoading(true);
       setError('');
 
-      // 1. Obtener NDI del backend
+      // 1. Obtener NDI del backend (los precios ya vienen aquí)
       const url = api.signals(defaultTickers);
       console.log('📊 Fetching URL:', url);
 
@@ -197,30 +196,27 @@ export default function Dashboard() {
       console.log('📊 Data received:', data);
 
       if (data?.success && Array.isArray(data.signals) && data.signals.length > 0) {
-        const tickers = data.signals.map((item: any) => item.ticker);
-        
-        // 2. Obtener precios desde Yahoo Finance (frontend - IP del usuario)
-        console.log('📊 Obteniendo precios desde Yahoo Finance...');
-        const priceData = await getPricesFromYahoo(tickers);
-        console.log('📊 Precios obtenidos:', priceData);
+        // ✅ LOS PRECIOS YA VIENEN EN data.signals (current_price)
+        console.log('📊 Usando precios de /api/signals-live (una sola llamada)...');
 
-        // 3. Combinar NDI + precios
+        // 2. Combinar NDI + precios (usando los precios que ya tenemos)
         const formatted = data.signals.map((item: any) => {
-          const priceInfo = priceData[item.ticker];
+          // Usar el precio que ya vino en la respuesta
+          const price = item.current_price || 0;
           return {
             ticker: item.ticker,
             ndi: item.ndi || 0,
             sentiment: item.sentiment_zscore ?? 0,
             momentum: item.momentum_zscore ?? 0,
-            price: priceInfo?.price || 0,
+            price: price, // ✅ Precio real de /api/signals-live
             sector: sectorMap[item.ticker] || 'Other',
             confidence: item.confidence || 70,
             regime: item.regime || 'No Data',
-            companyName: priceInfo?.companyName || item.ticker,
+            companyName: item.ticker,
           };
         });
 
-        console.log('📊 Datos formateados:', formatted);
+        console.log('📊 Datos formateados (con precios de signals-live):', formatted);
 
         setSignals(formatted);
         

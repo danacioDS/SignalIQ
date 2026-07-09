@@ -34,8 +34,7 @@ const FALLBACK_DATA: Record<string, PriceData> = {
 /*** */
 export const getPriceFromYahoo = async (ticker: string): Promise<PriceData | null> => {
   try {
-    // Usar el endpoint existente /api/prices/<ticker>
-    const url = `https://signaliq-backend.onrender.com/api/prices/${ticker}`;
+    const url = `https://signaliq-api.onrender.com/api/prices/${ticker}`;
     
     const response = await fetch(url, {
       headers: {
@@ -49,17 +48,24 @@ export const getPriceFromYahoo = async (ticker: string): Promise<PriceData | nul
     
     const data = await response.json();
     
-    // Extraer el precio del historial (el último elemento)
+    // Extraer el historial de precios
     const priceHistory = data.price_history || [];
+    
+    // Obtener el precio actual (el último elemento del historial)
     const lastPrice = priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].close : 0;
+    
+    // Obtener el precio anterior para calcular el cambio
+    const previousPrice = priceHistory.length > 1 ? priceHistory[priceHistory.length - 2].close : lastPrice;
+    const change = lastPrice - previousPrice;
+    const changePercent = previousPrice > 0 ? (change / previousPrice) * 100 : 0;
     
     return {
       ticker: ticker,
       price: lastPrice,
-      change: 0, // No tenemos cambio en este endpoint
-      changePercent: 0, // No tenemos cambio en este endpoint
-      companyName: ticker, // Podríamos obtenerlo de otro endpoint
-      sector: 'Unknown', // Podríamos obtenerlo de otro endpoint
+      change: change,
+      changePercent: changePercent,
+      companyName: ticker, // Podrías obtenerlo de otro endpoint
+      sector: 'Unknown', // Podrías obtenerlo de otro endpoint
       history: priceHistory,
     };
     
