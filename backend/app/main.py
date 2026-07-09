@@ -59,6 +59,32 @@ def get_cache_key(tickers_str: str) -> str:
     """Generar una clave única para el caché"""
     return hashlib.md5(tickers_str.encode()).hexdigest()
 
+def get_price_alphavantage(ticker):
+    """Obtener precio desde Alpha Vantage"""
+    try:
+        api_key = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
+        if not api_key:
+            logger.warning(f"⚠️ No hay API key de Alpha Vantage para {ticker}")
+            return None
+        
+        url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'Global Quote' in data and '05. price' in data['Global Quote']:
+                price = float(data['Global Quote']['05. price'])
+                logger.info(f"💰 Alpha Vantage: ${price} para {ticker}")
+                return price
+            else:
+                logger.warning(f"⚠️ Alpha Vantage no devolvió precio para {ticker}: {data}")
+        else:
+            logger.warning(f"⚠️ Alpha Vantage error {response.status_code} para {ticker}")
+    except Exception as e:
+        logger.warning(f"⚠️ Alpha Vantage falló para {ticker}: {str(e)}")
+    
+    return None
+
 def get_price_twelvedata(ticker):
     """Obtener precio desde Twelve Data"""
     try:
@@ -84,6 +110,36 @@ def get_price_twelvedata(ticker):
         logger.warning(f"⚠️ Twelve Data falló para {ticker}: {str(e)}")
     
     return None
+
+def get_price_yfinance(ticker):
+    """Obtener precio desde Yahoo Finance (fallback)"""
+    try:
+        import yfinance as yf
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period="2d", timeout=10)
+        if not hist.empty:
+            price = hist['Close'].iloc[-1]
+            logger.info(f"💰 yfinance (fallback): ${price} para {ticker}")
+            return price
+    except Exception as e:
+        logger.error(f"❌ yfinance error para {ticker}: {str(e)}")
+    return None
+
+def get_price(ticker):
+    """Obtener precio: Alpha Vantage -> Twelve Data -> Yahoo Finance"""
+    # 1. Alpha Vantage (primario)
+    price = get_price_alphavantage(ticker)
+    if price is not None:
+        return price
+    
+    # 2. Twelve Data (fallback 1)
+    price = get_price_twelvedata(ticker)
+    if price is not None:
+        return price
+    
+    # 3. Yahoo Finance (fallback 2)
+    logger.info(f"🔄 Usando fallback yfinance para {ticker}")
+    return get_price_yfinance(ticker)
 
 def get_cached_signals(tickers_str: str):
     """Obtener señales con caché de 60 segundos"""
@@ -113,8 +169,8 @@ def get_cached_signals(tickers_str: str):
             
             regime = classify_regime(ndi)
             
-            # ✅ Usar Twelve Data en lugar de yfinance
-            price = get_price_twelvedata(ticker)
+            # ✅ Usar Alpha Vantage como fuente primaria
+            price = get_price(ticker)
             
             results.append({
                 'ticker': ticker,
@@ -227,8 +283,34 @@ def calculate_momentum_zscore(price_history):
 
 
 # ============================================================
-# FUNCIONES DE PRECIOS (TWELVE DATA + YFINANCE FALLBACK)
+# FUNCIONES DE PRECIOS (ALPHA VANTAGE + TWELVE DATA + YFINANCE)
 # ============================================================
+
+def get_price_alphavantage(ticker):
+    """Obtener precio desde Alpha Vantage"""
+    try:
+        api_key = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
+        if not api_key:
+            logger.warning(f"⚠️ No hay API key de Alpha Vantage para {ticker}")
+            return None
+        
+        url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'Global Quote' in data and '05. price' in data['Global Quote']:
+                price = float(data['Global Quote']['05. price'])
+                logger.info(f"💰 Alpha Vantage: ${price} para {ticker}")
+                return price
+            else:
+                logger.warning(f"⚠️ Alpha Vantage no devolvió precio para {ticker}: {data}")
+        else:
+            logger.warning(f"⚠️ Alpha Vantage error {response.status_code} para {ticker}")
+    except Exception as e:
+        logger.warning(f"⚠️ Alpha Vantage falló para {ticker}: {str(e)}")
+    
+    return None
 
 def get_price_twelvedata(ticker):
     """Obtener precio desde Twelve Data"""
@@ -259,7 +341,8 @@ def get_price_twelvedata(ticker):
 def get_price_yfinance(ticker):
     """Obtener precio desde Yahoo Finance (fallback)"""
     try:
-        stock = yf.Ticker(ticker, session=yf_session)
+        import yfinance as yf
+        stock = yf.Ticker(ticker)
         hist = stock.history(period="2d", timeout=10)
         if not hist.empty:
             price = hist['Close'].iloc[-1]
@@ -270,17 +353,26 @@ def get_price_yfinance(ticker):
     return None
 
 def get_price(ticker):
-    """Obtener precio: primero Twelve Data, luego yfinance como fallback"""
+    """Obtener precio: Alpha Vantage -> Twelve Data -> Yahoo Finance"""
+    # 1. Alpha Vantage (primario)
+    price = get_price_alphavantage(ticker)
+    if price is not None:
+        return price
+    
+    # 2. Twelve Data (fallback 1)
     price = get_price_twelvedata(ticker)
     if price is not None:
         return price
+    
+    # 3. Yahoo Finance (fallback 2)
     logger.info(f"🔄 Usando fallback yfinance para {ticker}")
     return get_price_yfinance(ticker)
 
 def get_company_info(ticker):
     """Obtener información de la empresa desde yfinance"""
     try:
-        stock = yf.Ticker(ticker, session=yf_session)
+        import yfinance as yf
+        stock = yf.Ticker(ticker)
         info = stock.info
         return {
             'company_name': info.get('longName', info.get('shortName', ticker)),
@@ -306,7 +398,7 @@ def root():
         'name': 'SignalIQ API',
         'version': '2026-07-07',
         'status': 'operational',
-        'mode': 'twelvedata_with_news'
+        'mode': 'alphavantage_with_news'
     })
 
 @app.route('/health')
@@ -315,7 +407,7 @@ def health():
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now(timezone.utc).isoformat(),
-        'mode': 'twelvedata_with_news'
+        'mode': 'alphavantage_with_news'
     })
 
 @app.route('/api/signals-live')
@@ -361,7 +453,7 @@ def ticker_analysis(ticker):
                 'source': 'RSS Feed'
             })
         
-        # 2. Obtener precio (desde Twelve Data)
+        # 2. Obtener precio (desde Alpha Vantage)
         price = get_price(ticker)
         price_available = price is not None
         price_history = []
@@ -369,7 +461,8 @@ def ticker_analysis(ticker):
         # 3. Obtener historial de precios para momentum
         if price_available:
             try:
-                stock = yf.Ticker(ticker, session=yf_session)
+                import yfinance as yf
+                stock = yf.Ticker(ticker)
                 hist = stock.history(period="5d", timeout=10)
                 if not hist.empty:
                     price_history = hist['Close'].tolist()
@@ -473,52 +566,58 @@ def ticker_analysis(ticker):
 
 @app.route('/api/prices/<ticker>')
 def get_prices(ticker):
-    """Obtener historial de precios desde Twelve Data"""
+    """Obtener historial de precios desde Alpha Vantage"""
     try:
         ticker = ticker.upper()
         logger.info(f"📊 Obteniendo historial de precios para {ticker}")
         
-        # Usar Twelve Data en lugar de yfinance
-        api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
+        # Usar Alpha Vantage para el historial
+        api_key = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
         if not api_key:
-            logger.warning("⚠️ No hay API key de Twelve Data")
-            # Intentar con yfinance como fallback
-            try:
-                import yfinance as yf
-                stock = yf.Ticker(ticker)
-                hist = stock.history(period="30d", timeout=10)
-                if not hist.empty:
-                    price_history = []
-                    for date, row in hist.iterrows():
-                        price_history.append({
-                            'date': date.strftime('%Y-%m-%d'),
-                            'close': float(row['Close'])
+            logger.warning("⚠️ No hay API key de Alpha Vantage")
+            # Intentar con Twelve Data como fallback
+            api_key_td = os.environ.get('TWELVE_DATA_API_KEY', '')
+            if api_key_td:
+                url = f"https://api.twelvedata.com/time_series?symbol={ticker}&interval=1day&outputsize=30&apikey={api_key_td}"
+                response = requests.get(url, timeout=15)
+                if response.status_code == 200:
+                    data = response.json()
+                    if 'values' in data and data['values']:
+                        price_history = []
+                        for item in data['values']:
+                            price_history.append({
+                                'date': item['datetime'][:10],
+                                'close': float(item['close'])
+                            })
+                        price_history.reverse()
+                        return jsonify({
+                            'ticker': ticker,
+                            'price_history': price_history
                         })
-                    return jsonify({
-                        'ticker': ticker,
-                        'price_history': price_history
-                    })
-            except Exception as e:
-                logger.error(f"❌ Fallback yfinance también falló: {str(e)}")
             return jsonify({'error': 'API key not configured'}), 500
         
-        # Obtener datos de Twelve Data
-        url = f"https://api.twelvedata.com/time_series?symbol={ticker}&interval=1day&outputsize=30&apikey={api_key}"
+        # Obtener datos de Alpha Vantage
+        url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&outputsize=compact&apikey={api_key}"
         response = requests.get(url, timeout=15)
         
         if response.status_code != 200:
-            logger.error(f"❌ Twelve Data error: {response.status_code}")
+            logger.error(f"❌ Alpha Vantage error: {response.status_code}")
             return jsonify({'error': 'Failed to fetch data'}), response.status_code
         
         data = response.json()
         
-        if 'values' in data and data['values']:
+        if 'Time Series (Daily)' in data:
+            time_series = data['Time Series (Daily)']
             price_history = []
-            for item in data['values']:
+            
+            # Tomar los últimos 30 días
+            dates = sorted(time_series.keys(), reverse=True)[:30]
+            for date in dates:
                 price_history.append({
-                    'date': item['datetime'][:10],
-                    'close': float(item['close'])
+                    'date': date,
+                    'close': float(time_series[date]['4. close'])
                 })
+            
             # Invertir para que sea cronológico
             price_history.reverse()
             return jsonify({
@@ -527,25 +626,6 @@ def get_prices(ticker):
             })
         else:
             logger.warning(f"⚠️ No se encontraron datos para {ticker}")
-            # Intentar con yfinance como fallback
-            try:
-                import yfinance as yf
-                stock = yf.Ticker(ticker)
-                hist = stock.history(period="30d", timeout=10)
-                if not hist.empty:
-                    price_history = []
-                    for date, row in hist.iterrows():
-                        price_history.append({
-                            'date': date.strftime('%Y-%m-%d'),
-                            'close': float(row['Close'])
-                        })
-                    return jsonify({
-                        'ticker': ticker,
-                        'price_history': price_history
-                    })
-            except Exception as e:
-                logger.error(f"❌ Fallback yfinance también falló: {str(e)}")
-            
             return jsonify({
                 'ticker': ticker,
                 'price_history': [],
@@ -566,5 +646,5 @@ def get_tickers():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     logger.info(f"🚀 SignalIQ API en puerto {port}")
-    logger.info("📊 Usando Twelve Data + noticias reales")
+    logger.info("📊 Usando Alpha Vantage + noticias reales")
     app.run(host='0.0.0.0', port=port, debug=False)
