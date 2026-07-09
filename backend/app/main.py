@@ -54,23 +54,86 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# FUNCIONES DE PRECIOS (UNA SOLA VEZ)
+# INFORMACIÓN DE EMPRESAS (ESTÁTICA)
+# ============================================================
+COMPANY_INFO = {
+    "AAPL": {
+        "company_name": "Apple Inc.",
+        "sector": "Technology",
+        "industry": "Consumer Electronics"
+    },
+    "MSFT": {
+        "company_name": "Microsoft Corporation",
+        "sector": "Technology",
+        "industry": "Software"
+    },
+    "NVDA": {
+        "company_name": "NVIDIA Corporation",
+        "sector": "Technology",
+        "industry": "Semiconductors"
+    },
+    "GOOGL": {
+        "company_name": "Alphabet Inc.",
+        "sector": "Technology",
+        "industry": "Internet"
+    },
+    "META": {
+        "company_name": "Meta Platforms Inc.",
+        "sector": "Technology",
+        "industry": "Internet"
+    },
+    "AMD": {
+        "company_name": "Advanced Micro Devices Inc.",
+        "sector": "Technology",
+        "industry": "Semiconductors"
+    },
+    "AMZN": {
+        "company_name": "Amazon.com Inc.",
+        "sector": "Consumer",
+        "industry": "E-commerce"
+    },
+    "TSLA": {
+        "company_name": "Tesla Inc.",
+        "sector": "Automotive",
+        "industry": "Electric Vehicles"
+    },
+    "JPM": {
+        "company_name": "JPMorgan Chase & Co.",
+        "sector": "Financial",
+        "industry": "Banking"
+    },
+    "KO": {
+        "company_name": "The Coca-Cola Company",
+        "sector": "Consumer",
+        "industry": "Beverages"
+    }
+}
+
+SUPPORTED_TICKERS = tuple(COMPANY_INFO.keys())
+
+def get_company_info(ticker):
+    """Obtener información de la empresa desde diccionario estático"""
+    return COMPANY_INFO.get(ticker, {
+        'company_name': ticker,
+        'sector': 'Unknown',
+        'industry': 'Unknown'
+    })
+
+# ============================================================
+# FUNCIONES DE PRECIOS
 # ============================================================
 
-def get_price_alphavantage(ticker):
+def fetch_alphavantage_price(ticker):
     """Obtener precio desde Alpha Vantage"""
     try:
         api_key = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
-        logger.info(f"🔍 Alpha Vantage key configured={bool(api_key)}")
         if not api_key:
             logger.warning(f"⚠️ No hay API key de Alpha Vantage para {ticker}")
             return None
         
         url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
         response = requests.get(url, timeout=10)
-        
         logger.info(f"🔍 AlphaVantage status={response.status_code}")
-        logger.info(f"🔍 AlphaVantage body={response.text}")
         
         if response.status_code == 200:
             data = response.json()
@@ -78,27 +141,21 @@ def get_price_alphavantage(ticker):
                 price = float(data['Global Quote']['05. price'])
                 logger.info(f"💰 Alpha Vantage: ${price} para {ticker}")
                 return price
-        else:
-            logger.warning(f"⚠️ Alpha Vantage error {response.status_code} para {ticker}")
     except Exception as e:
         logger.warning(f"⚠️ Alpha Vantage falló para {ticker}: {str(e)}")
-    
     return None
 
-def get_price_twelvedata(ticker):
+def fetch_twelvedata_price(ticker):
     """Obtener precio desde Twelve Data"""
     try:
         api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
-        logger.info(f"🔍 Twelve Data key configured={bool(api_key)}")
         if not api_key:
             logger.warning(f"⚠️ No hay API key de Twelve Data para {ticker}")
             return None
         
         url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={api_key}"
         response = requests.get(url, timeout=10)
-        
         logger.info(f"🔍 TwelveData status={response.status_code}")
-        logger.info(f"🔍 TwelveData body={response.text}")
         
         if response.status_code == 200:
             data = response.json()
@@ -106,14 +163,11 @@ def get_price_twelvedata(ticker):
                 price = float(data['price'])
                 logger.info(f"💰 Twelve Data: ${price} para {ticker}")
                 return price
-        else:
-            logger.warning(f"⚠️ Twelve Data error {response.status_code} para {ticker}")
     except Exception as e:
         logger.warning(f"⚠️ Twelve Data falló para {ticker}: {str(e)}")
-    
     return None
 
-def get_price_yfinance(ticker):
+def fetch_yfinance_price(ticker):
     """Obtener precio desde Yahoo Finance (fallback)"""
     try:
         stock = yf.Ticker(ticker)
@@ -130,38 +184,37 @@ def get_price(ticker):
     """Obtener precio: Alpha Vantage -> Twelve Data -> Yahoo Finance"""
     logger.info(f"🔍 Obteniendo precio para {ticker}")
     
-    price = get_price_alphavantage(ticker)
+    price = fetch_alphavantage_price(ticker)
     if price is not None:
         return price
     
-    price = get_price_twelvedata(ticker)
+    price = fetch_twelvedata_price(ticker)
     if price is not None:
         return price
     
-    price = get_price_yfinance(ticker)
+    price = fetch_yfinance_price(ticker)
     if price is not None:
         return price
     
     logger.warning(f"❌ No se pudo obtener precio para {ticker} de ninguna fuente")
     return None
 
-def get_company_info(ticker):
-    """Obtener información de la empresa desde yfinance"""
+def get_price_history(ticker, period="30d"):
+    """Obtener historial de precios desde yfinance con logs de diagnóstico"""
     try:
+        logger.info(f"📊 Obteniendo historial para {ticker} (period={period})")
         stock = yf.Ticker(ticker)
-        info = stock.info
-        return {
-            'company_name': info.get('longName', info.get('shortName', ticker)),
-            'sector': info.get('sector', 'Unknown'),
-            'industry': info.get('industry', 'Unknown')
-        }
+        hist = stock.history(period=period, timeout=10)
+        if not hist.empty:
+            prices = hist['Close'].tolist()
+            logger.info(f"✅ Historial para {ticker}: {len(prices)} registros")
+            logger.info(f"📊 Precios: {prices}")
+            return prices
+        else:
+            logger.warning(f"⚠️ Historial vacío para {ticker}")
     except Exception as e:
-        logger.warning(f"⚠️ No se pudo obtener info de {ticker}: {str(e)}")
-        return {
-            'company_name': ticker,
-            'sector': 'Unknown',
-            'industry': 'Unknown'
-        }
+        logger.warning(f"⚠️ No se pudo obtener historial para {ticker}: {str(e)}")
+    return []
 
 # ============================================================
 # FUNCIONES DE ANÁLISIS
@@ -189,13 +242,19 @@ def calculate_sentiment_zscore(news_sentiment):
     return float(news_sentiment)
 
 def calculate_momentum_zscore(price_history):
+    """Calcular momentum z-score con logs de diagnóstico"""
+    logger.info(f"📊 calculate_momentum_zscore input: {price_history} (len={len(price_history)})")
+    
     if not price_history or len(price_history) < 2:
+        logger.warning(f"⚠️ Historial insuficiente: {len(price_history)} registros")
         return 0.0
     
     returns = []
     for i in range(1, len(price_history)):
         if price_history[i-1] != 0:
             returns.append((price_history[i] - price_history[i-1]) / price_history[i-1])
+    
+    logger.info(f"📊 Returns calculados: {returns}")
     
     if not returns:
         return 0.0
@@ -204,7 +263,9 @@ def calculate_momentum_zscore(price_history):
     mean_return = np.mean(returns)
     std_return = np.std(returns) if np.std(returns) > 0 else 1.0
     
-    return (last_return - mean_return) / std_return
+    result = (last_return - mean_return) / std_return
+    logger.info(f"📊 Momentum Z-Score: {result}")
+    return result
 
 # ============================================================
 # CACHÉ PARA SEÑALES
@@ -229,7 +290,13 @@ def get_cached_signals(tickers_str: str):
         try:
             news_data = process_news_for_ticker(ticker)
             sentiment_zscore = calculate_sentiment_zscore(news_data['sentiment'])
-            momentum_zscore = 0.0
+            
+            # ✅ Obtener historial para momentum con logs
+            price_history = get_price_history(ticker, period="5d")
+            logger.info(f"📊 Historial de {ticker}: {price_history} (len={len(price_history)})")
+            momentum_zscore = calculate_momentum_zscore(price_history)
+            logger.info(f"📊 Momentum Z-Score para {ticker}: {momentum_zscore}")
+            
             ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
             if ndi is None:
                 ndi = 0.0
@@ -331,19 +398,14 @@ def ticker_analysis(ticker):
         
         price = get_price(ticker)
         price_available = price is not None
-        price_history = []
         
-        if price_available:
-            try:
-                stock = yf.Ticker(ticker)
-                hist = stock.history(period="5d", timeout=10)
-                if not hist.empty:
-                    price_history = hist['Close'].tolist()
-            except:
-                pass
+        # ✅ Obtener historial para momentum con logs
+        price_history = get_price_history(ticker, period="5d")
+        logger.info(f"📊 Historial de {ticker}: {price_history} (len={len(price_history)})")
+        momentum_zscore = calculate_momentum_zscore(price_history)
+        logger.info(f"📊 Momentum Z-Score para {ticker}: {momentum_zscore}")
         
         sentiment_zscore = calculate_sentiment_zscore(news_data['sentiment'])
-        momentum_zscore = calculate_momentum_zscore(price_history) if price_available else 0.0
         
         ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
         if ndi is None:
@@ -455,7 +517,7 @@ def get_prices(ticker):
             response = requests.get(url, timeout=15)
             
             logger.info(f"🔍 AlphaVantage status={response.status_code}")
-            logger.info(f"🔍 AlphaVantage body={response.text}")
+            logger.info(f"🔍 AlphaVantage body={response.text[:300]}")
             
             if response.status_code == 200:
                 data = response.json()
@@ -491,7 +553,7 @@ def get_prices(ticker):
             response = requests.get(url, timeout=15)
             
             logger.info(f"🔍 TwelveData status={response.status_code}")
-            logger.info(f"🔍 TwelveData body={response.text}")
+            logger.info(f"🔍 TwelveData body={response.text[:300]}")
             
             if response.status_code == 200:
                 data = response.json()
@@ -532,30 +594,9 @@ def get_prices(ticker):
 @app.route('/api/tickers')
 def get_tickers():
     return jsonify({
-        'tickers': ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META', 'AMD', 'AMZN', 'JPM', 'KO'],
-        'count': 10
+        'tickers': list(SUPPORTED_TICKERS),
+        'count': len(SUPPORTED_TICKERS)
     })
-
-def get_company_info(ticker):
-    """Obtener información de la empresa desde yfinance"""
-    try:
-        import yfinance as yf
-        stock = yf.Ticker(ticker)
-        # Intentar obtener info con timeout
-        info = stock.info
-        return {
-            'company_name': info.get('longName', info.get('shortName', ticker)),
-            'sector': info.get('sector', 'Unknown'),
-            'industry': info.get('industry', 'Unknown')
-        }
-    except Exception as e:
-        logger.warning(f"⚠️ No se pudo obtener info de {ticker}: {str(e)}")
-        return {
-            'company_name': ticker,
-            'sector': 'Unknown',
-            'industry': 'Unknown'
-        }    
-
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
