@@ -12,15 +12,22 @@ import numpy as np
 import requests
 import time
 
+# ============================================================
+# IMPORTACIÓN DE YAHOO_PROXY (SOLUCIÓN DEFINITIVA)
+# ============================================================
+# Agregar el directorio actual al path para importar módulos locales
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from yahoo_proxy import yahoo_proxy
+
 # Importación directa (layers ahora está en app/)
 from layers.layer4_measurement import calculate_narrative_divergence_index
 from news_pipeline import process_news_for_ticker
-from .yahoo_proxy import yahoo_proxy
-app.register_blueprint(yahoo_proxy)
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend', 'app'))
-
+# ============================================================
+# CREAR APLICACIÓN FLASK
+# ============================================================
 app = Flask(__name__)
+app.register_blueprint(yahoo_proxy)
 
 # Configurar CORS correctamente
 CORS(app, origins=[
