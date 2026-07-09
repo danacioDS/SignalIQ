@@ -15,7 +15,7 @@ import time
 # Importación directa (layers ahora está en app/)
 from layers.layer4_measurement import calculate_narrative_divergence_index
 from news_pipeline import process_news_for_ticker
-from app.yahoo_proxy import yahoo_proxy
+from .yahoo_proxy import yahoo_proxy
 app.register_blueprint(yahoo_proxy)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend', 'app'))
@@ -38,18 +38,35 @@ from datetime import datetime, timedelta
 # ============================================================
 # CACHÉ PARA /api/signals-live
 # ============================================================
-from functools import lru_cache
+import hashlib
+import json
 from datetime import datetime, timedelta
+from functools import lru_cache
 
 # Configuración del caché
 CACHE_TTL = 60  # 60 segundos (1 minuto)
-cache_timestamps = {}  # Para rastrear cuándo se creó cada caché
+_cache = {}  # Diccionario para almacenar los resultados
+_cache_timestamps = {}  # Para rastrear cuándo se creó cada caché
 
-@lru_cache(maxsize=128)
+def get_cache_key(tickers_str: str) -> str:
+    """Generar una clave única para el caché"""
+    return hashlib.md5(tickers_str.encode()).hexdigest()
+
 def get_cached_signals(tickers_str: str):
-    """Obtener señales con caché"""
+    """Obtener señales con caché de 60 segundos"""
+    cache_key = get_cache_key(tickers_str)
+    now = datetime.now()
+    
+    # Verificar si el caché existe y no ha expirado
+    if cache_key in _cache and cache_key in _cache_timestamps:
+        elapsed = (now - _cache_timestamps[cache_key]).total_seconds()
+        if elapsed < CACHE_TTL:
+            logger.info(f"📊 CACHÉ: Usando datos en caché para {tickers_str} (edad: {elapsed:.1f}s)")
+            return _cache[cache_key]
+    
+    # Procesar los datos (no hay caché o expiró)
+    logger.info(f"📊 CACHÉ: Procesando {tickers_str} (sin caché)")
     tickers = tickers_str.split(',')
-    logger.info(f"📊 CACHÉ: Procesando {len(tickers)} tickers")
     
     results = []
     for ticker in tickers:
@@ -85,13 +102,19 @@ def get_cached_signals(tickers_str: str):
                 'confidence': 0
             })
     
-    return {
+    response = {
         'success': True,
         'signals': results,
         'count': len(results),
-        'cached': True,
-        'timestamp': datetime.now().isoformat()
+        'cached': False,
+        'timestamp': now.isoformat()
     }
+    
+    # Guardar en caché
+    _cache[cache_key] = response
+    _cache_timestamps[cache_key] = now
+    
+    return response
 
 # ============================================================
 # CONFIGURACIÓN DE YFINANCE CON SESIÓN PERSISTENTE
@@ -245,7 +268,7 @@ def signals_live():
     # Obtener del caché (o procesar si no existe)
     result = get_cached_signals(tickers_str)
     
-    # Filtrar solo los tickers solicitados (en caso de que el caché tenga más)
+    # Filtrar solo los tickers solicitados
     ticker_set = set(ticker_list)
     filtered_signals = [s for s in result['signals'] if s['ticker'] in ticker_set]
     
