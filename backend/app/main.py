@@ -60,18 +60,36 @@ def get_cache_key(tickers_str: str) -> str:
     return hashlib.md5(tickers_str.encode()).hexdigest()
 
 def get_price_alphavantage(ticker):
-    """Obtener precio desde Alpha Vantage"""
+    """Obtener precio desde Alpha Vantage con logs detallados"""
     try:
         api_key = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
+        
+        # ✅ LOG: Verificar si la API key está configurada
+        logger.info(f"🔍 ALPHA_VANTAGE_API_KEY configurada: {'Sí' if api_key else 'No'}")
+        
         if not api_key:
             logger.warning(f"⚠️ No hay API key de Alpha Vantage para {ticker}")
             return None
         
         url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
+        
+        # ✅ LOG: URL que se está llamando (ocultando la API key por seguridad)
+        logger.info(f"🔍 Alpha Vantage URL: {url.replace(api_key, '***')}")
+        
         response = requests.get(url, timeout=10)
+        
+        # ✅ LOG: Código de estado
+        logger.info(f"🔍 Alpha Vantage status: {response.status_code}")
+        
+        # ✅ LOG: Cuerpo de la respuesta (primeros 1000 caracteres)
+        logger.info(f"🔍 Alpha Vantage body: {response.text[:1000]}")
         
         if response.status_code == 200:
             data = response.json()
+            
+            # ✅ LOG: Estructura de la respuesta
+            logger.info(f"🔍 Alpha Vantage data keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+            
             if 'Global Quote' in data and '05. price' in data['Global Quote']:
                 price = float(data['Global Quote']['05. price'])
                 logger.info(f"💰 Alpha Vantage: ${price} para {ticker}")
@@ -86,18 +104,33 @@ def get_price_alphavantage(ticker):
     return None
 
 def get_price_twelvedata(ticker):
-    """Obtener precio desde Twelve Data"""
+    """Obtener precio desde Twelve Data con logs detallados"""
     try:
         api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
+        
+        # ✅ LOG: Verificar si la API key está configurada
+        logger.info(f"🔍 TWELVE_DATA_API_KEY configurada: {'Sí' if api_key else 'No'}")
+        
         if not api_key:
             logger.warning(f"⚠️ No hay API key de Twelve Data para {ticker}")
             return None
         
         url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={api_key}"
+        
+        # ✅ LOG: URL (ocultando API key)
+        logger.info(f"🔍 Twelve Data URL: {url.replace(api_key, '***')}")
+        
         response = requests.get(url, timeout=10)
+        
+        # ✅ LOG: Código de estado
+        logger.info(f"🔍 Twelve Data status: {response.status_code}")
+        
+        # ✅ LOG: Cuerpo de la respuesta (primeros 1000 caracteres)
+        logger.info(f"🔍 Twelve Data body: {response.text[:1000]}")
         
         if response.status_code == 200:
             data = response.json()
+            logger.info(f"🔍 Twelve Data data keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
             if 'price' in data and data['price'] is not None:
                 price = float(data['price'])
                 logger.info(f"💰 Twelve Data: ${price} para {ticker}")
@@ -112,34 +145,47 @@ def get_price_twelvedata(ticker):
     return None
 
 def get_price_yfinance(ticker):
-    """Obtener precio desde Yahoo Finance (fallback)"""
+    """Obtener precio desde Yahoo Finance (fallback) con logs"""
     try:
         import yfinance as yf
+        logger.info(f"🔄 Intentando yfinance para {ticker}")
         stock = yf.Ticker(ticker)
         hist = stock.history(period="2d", timeout=10)
         if not hist.empty:
             price = hist['Close'].iloc[-1]
             logger.info(f"💰 yfinance (fallback): ${price} para {ticker}")
             return price
+        else:
+            logger.warning(f"⚠️ yfinance no encontró datos para {ticker}")
     except Exception as e:
         logger.error(f"❌ yfinance error para {ticker}: {str(e)}")
     return None
 
 def get_price(ticker):
-    """Obtener precio: Alpha Vantage -> Twelve Data -> Yahoo Finance"""
+    """Obtener precio: Alpha Vantage -> Twelve Data -> Yahoo Finance con logs"""
+    logger.info(f"🔍 Obteniendo precio para {ticker} usando get_price()")
+    
     # 1. Alpha Vantage (primario)
     price = get_price_alphavantage(ticker)
     if price is not None:
+        logger.info(f"✅ Precio obtenido de Alpha Vantage para {ticker}: {price}")
         return price
     
     # 2. Twelve Data (fallback 1)
     price = get_price_twelvedata(ticker)
     if price is not None:
+        logger.info(f"✅ Precio obtenido de Twelve Data para {ticker}: {price}")
         return price
     
     # 3. Yahoo Finance (fallback 2)
     logger.info(f"🔄 Usando fallback yfinance para {ticker}")
-    return get_price_yfinance(ticker)
+    price = get_price_yfinance(ticker)
+    if price is not None:
+        logger.info(f"✅ Precio obtenido de yfinance para {ticker}: {price}")
+        return price
+    
+    logger.warning(f"❌ No se pudo obtener precio para {ticker} de ninguna fuente")
+    return None
 
 def get_cached_signals(tickers_str: str):
     """Obtener señales con caché de 60 segundos"""
@@ -287,18 +333,36 @@ def calculate_momentum_zscore(price_history):
 # ============================================================
 
 def get_price_alphavantage(ticker):
-    """Obtener precio desde Alpha Vantage"""
+    """Obtener precio desde Alpha Vantage con logs detallados"""
     try:
         api_key = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
+        
+        # ✅ LOG: Verificar si la API key está configurada
+        logger.info(f"🔍 ALPHA_VANTAGE_API_KEY configurada: {'Sí' if api_key else 'No'}")
+        
         if not api_key:
             logger.warning(f"⚠️ No hay API key de Alpha Vantage para {ticker}")
             return None
         
         url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
+        
+        # ✅ LOG: URL que se está llamando (ocultando la API key por seguridad)
+        logger.info(f"🔍 Alpha Vantage URL: {url.replace(api_key, '***')}")
+        
         response = requests.get(url, timeout=10)
+        
+        # ✅ LOG: Código de estado
+        logger.info(f"🔍 Alpha Vantage status: {response.status_code}")
+        
+        # ✅ LOG: Cuerpo de la respuesta (primeros 1000 caracteres)
+        logger.info(f"🔍 Alpha Vantage body: {response.text[:1000]}")
         
         if response.status_code == 200:
             data = response.json()
+            
+            # ✅ LOG: Estructura de la respuesta
+            logger.info(f"🔍 Alpha Vantage data keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+            
             if 'Global Quote' in data and '05. price' in data['Global Quote']:
                 price = float(data['Global Quote']['05. price'])
                 logger.info(f"💰 Alpha Vantage: ${price} para {ticker}")
@@ -313,18 +377,33 @@ def get_price_alphavantage(ticker):
     return None
 
 def get_price_twelvedata(ticker):
-    """Obtener precio desde Twelve Data"""
+    """Obtener precio desde Twelve Data con logs detallados"""
     try:
         api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
+        
+        # ✅ LOG: Verificar si la API key está configurada
+        logger.info(f"🔍 TWELVE_DATA_API_KEY configurada: {'Sí' if api_key else 'No'}")
+        
         if not api_key:
             logger.warning(f"⚠️ No hay API key de Twelve Data para {ticker}")
             return None
         
         url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={api_key}"
+        
+        # ✅ LOG: URL (ocultando API key)
+        logger.info(f"🔍 Twelve Data URL: {url.replace(api_key, '***')}")
+        
         response = requests.get(url, timeout=10)
+        
+        # ✅ LOG: Código de estado
+        logger.info(f"🔍 Twelve Data status: {response.status_code}")
+        
+        # ✅ LOG: Cuerpo de la respuesta (primeros 1000 caracteres)
+        logger.info(f"🔍 Twelve Data body: {response.text[:1000]}")
         
         if response.status_code == 200:
             data = response.json()
+            logger.info(f"🔍 Twelve Data data keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
             if 'price' in data and data['price'] is not None:
                 price = float(data['price'])
                 logger.info(f"💰 Twelve Data: ${price} para {ticker}")
@@ -339,34 +418,47 @@ def get_price_twelvedata(ticker):
     return None
 
 def get_price_yfinance(ticker):
-    """Obtener precio desde Yahoo Finance (fallback)"""
+    """Obtener precio desde Yahoo Finance (fallback) con logs"""
     try:
         import yfinance as yf
+        logger.info(f"🔄 Intentando yfinance para {ticker}")
         stock = yf.Ticker(ticker)
         hist = stock.history(period="2d", timeout=10)
         if not hist.empty:
             price = hist['Close'].iloc[-1]
             logger.info(f"💰 yfinance (fallback): ${price} para {ticker}")
             return price
+        else:
+            logger.warning(f"⚠️ yfinance no encontró datos para {ticker}")
     except Exception as e:
         logger.error(f"❌ yfinance error para {ticker}: {str(e)}")
     return None
 
 def get_price(ticker):
-    """Obtener precio: Alpha Vantage -> Twelve Data -> Yahoo Finance"""
+    """Obtener precio: Alpha Vantage -> Twelve Data -> Yahoo Finance con logs"""
+    logger.info(f"🔍 Obteniendo precio para {ticker} usando get_price()")
+    
     # 1. Alpha Vantage (primario)
     price = get_price_alphavantage(ticker)
     if price is not None:
+        logger.info(f"✅ Precio obtenido de Alpha Vantage para {ticker}: {price}")
         return price
     
     # 2. Twelve Data (fallback 1)
     price = get_price_twelvedata(ticker)
     if price is not None:
+        logger.info(f"✅ Precio obtenido de Twelve Data para {ticker}: {price}")
         return price
     
     # 3. Yahoo Finance (fallback 2)
     logger.info(f"🔄 Usando fallback yfinance para {ticker}")
-    return get_price_yfinance(ticker)
+    price = get_price_yfinance(ticker)
+    if price is not None:
+        logger.info(f"✅ Precio obtenido de yfinance para {ticker}: {price}")
+        return price
+    
+    logger.warning(f"❌ No se pudo obtener precio para {ticker} de ninguna fuente")
+    return None
 
 def get_company_info(ticker):
     """Obtener información de la empresa desde yfinance"""
@@ -566,18 +658,22 @@ def ticker_analysis(ticker):
 
 @app.route('/api/prices/<ticker>')
 def get_prices(ticker):
-    """Obtener historial de precios desde Alpha Vantage"""
+    """Obtener historial de precios desde Alpha Vantage con logs detallados"""
     try:
         ticker = ticker.upper()
         logger.info(f"📊 Obteniendo historial de precios para {ticker}")
         
-        # Usar Alpha Vantage para el historial
         api_key = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
+        
+        # ✅ LOG: Verificar si la API key está configurada
+        logger.info(f"🔍 ALPHA_VANTAGE_API_KEY configurada: {'Sí' if api_key else 'No'}")
+        
         if not api_key:
             logger.warning("⚠️ No hay API key de Alpha Vantage")
             # Intentar con Twelve Data como fallback
             api_key_td = os.environ.get('TWELVE_DATA_API_KEY', '')
             if api_key_td:
+                logger.info("🔄 Usando Twelve Data como fallback para historial")
                 url = f"https://api.twelvedata.com/time_series?symbol={ticker}&interval=1day&outputsize=30&apikey={api_key_td}"
                 response = requests.get(url, timeout=15)
                 if response.status_code == 200:
@@ -596,9 +692,18 @@ def get_prices(ticker):
                         })
             return jsonify({'error': 'API key not configured'}), 500
         
-        # Obtener datos de Alpha Vantage
         url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&outputsize=compact&apikey={api_key}"
+        
+        # ✅ LOG: URL (ocultando API key)
+        logger.info(f"🔍 Alpha Vantage URL: {url.replace(api_key, '***')}")
+        
         response = requests.get(url, timeout=15)
+        
+        # ✅ LOG: Código de estado
+        logger.info(f"🔍 Alpha Vantage status: {response.status_code}")
+        
+        # ✅ LOG: Cuerpo de la respuesta (primeros 1000 caracteres)
+        logger.info(f"🔍 Alpha Vantage body: {response.text[:1000]}")
         
         if response.status_code != 200:
             logger.error(f"❌ Alpha Vantage error: {response.status_code}")
@@ -606,11 +711,13 @@ def get_prices(ticker):
         
         data = response.json()
         
+        # ✅ LOG: Estructura de la respuesta
+        logger.info(f"🔍 Alpha Vantage data keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+        
         if 'Time Series (Daily)' in data:
             time_series = data['Time Series (Daily)']
             price_history = []
             
-            # Tomar los últimos 30 días
             dates = sorted(time_series.keys(), reverse=True)[:30]
             for date in dates:
                 price_history.append({
@@ -618,7 +725,6 @@ def get_prices(ticker):
                     'close': float(time_series[date]['4. close'])
                 })
             
-            # Invertir para que sea cronológico
             price_history.reverse()
             return jsonify({
                 'ticker': ticker,
@@ -626,6 +732,29 @@ def get_prices(ticker):
             })
         else:
             logger.warning(f"⚠️ No se encontraron datos para {ticker}")
+            logger.warning(f"⚠️ Respuesta completa: {data}")
+            
+            # Intentar con Twelve Data como fallback
+            api_key_td = os.environ.get('TWELVE_DATA_API_KEY', '')
+            if api_key_td:
+                logger.info("🔄 Usando Twelve Data como fallback para historial")
+                url_td = f"https://api.twelvedata.com/time_series?symbol={ticker}&interval=1day&outputsize=30&apikey={api_key_td}"
+                response_td = requests.get(url_td, timeout=15)
+                if response_td.status_code == 200:
+                    data_td = response_td.json()
+                    if 'values' in data_td and data_td['values']:
+                        price_history = []
+                        for item in data_td['values']:
+                            price_history.append({
+                                'date': item['datetime'][:10],
+                                'close': float(item['close'])
+                            })
+                        price_history.reverse()
+                        return jsonify({
+                            'ticker': ticker,
+                            'price_history': price_history
+                        })
+            
             return jsonify({
                 'ticker': ticker,
                 'price_history': [],
