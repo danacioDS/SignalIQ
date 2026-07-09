@@ -1,6 +1,6 @@
 """
 SignalIQ API - Con noticias reales
-Versión: 8.0 - Ultimate Production Ready
+Versión: 8.1 - Con endpoint /api/ticker/<ticker>
 """
 import os
 import sys
@@ -42,7 +42,8 @@ class Config:
         'history': 300,
         'history_full': 300,
         'news': 300,
-        'health': 60
+        'health': 60,
+        'ticker': 60  # Nuevo TTL para ticker individual
     }
     
     # Threads y concurrencia
@@ -53,7 +54,7 @@ class Config:
     # APIs
     TWELVE_DATA_API_KEY = os.environ.get('TWELVE_DATA_API_KEY', '')
     ALPHA_VANTAGE_API_KEY = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
-    REDIS_URL = os.environ.get('REDIS_URL', '')  # Preparado para Redis
+    REDIS_URL = os.environ.get('REDIS_URL', '')
     
     # CORS
     CORS_ORIGINS = [
@@ -61,7 +62,8 @@ class Config:
         "http://127.0.0.1:3000",
         "https://signaliq-zeta-ten.vercel.app",
         "https://signaliq-zeta.vercel.app",
-        "https://signaliq-l8mi.onrender.com"
+        "https://signaliq-l8mi.onrender.com",
+        "https://signaliq-api.onrender.com"
     ]
     
     # Timeouts y retries
@@ -74,8 +76,8 @@ class Config:
     RATE_LIMIT_ANALYSIS = "10 per minute"
     
     # Circuit Breaker
-    CIRCUIT_BREAKER_THRESHOLD = 5  # Errores antes de abrir
-    CIRCUIT_BREAKER_TIMEOUT = 60   # Segundos para half-open
+    CIRCUIT_BREAKER_THRESHOLD = 5
+    CIRCUIT_BREAKER_TIMEOUT = 60
 
 
 # ============================================================
@@ -197,10 +199,6 @@ logger.addFilter(RequestIdFilter())
 # RETRY DECORATOR CON BACKOFF EXPONENCIAL
 # ============================================================
 def retry(max_retries=3, delay=1, exponential=True):
-    """
-    Decorador para reintentar llamadas a APIs externas
-    Con backoff exponencial: 1, 2, 4, 8 segundos
-    """
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -240,7 +238,6 @@ def retry(max_retries=3, delay=1, exponential=True):
 # ============================================================
 @dataclass
 class Metrics:
-    """Métricas de rendimiento"""
     request_id: str
     endpoint: str
     start_time: float
@@ -257,7 +254,7 @@ class Metrics:
 
 
 # ============================================================
-# CACHÉ THREAD-SAFE (CON PREPARACIÓN PARA REDIS)
+# CACHÉ THREAD-SAFE
 # ============================================================
 _cache = {
     'signal': {},
@@ -265,7 +262,8 @@ _cache = {
     'history': {},
     'history_full': {},
     'news': {},
-    'health': {}
+    'health': {},
+    'ticker': {}  # Nuevo caché para ticker
 }
 _cache_timestamps = {
     'signal': {},
@@ -273,11 +271,11 @@ _cache_timestamps = {
     'history': {},
     'history_full': {},
     'news': {},
-    'health': {}
+    'health': {},
+    'ticker': {}
 }
 _cache_lock = Lock()
 
-# Preparado para Redis
 _redis_client = None
 if Config.REDIS_URL:
     try:
@@ -289,14 +287,11 @@ if Config.REDIS_URL:
 
 
 def get_cache_key(prefix: str, *args) -> str:
-    """Generar clave única para caché"""
     key_parts = [prefix] + [str(a) for a in args]
     return hashlib.md5('_'.join(key_parts).encode()).hexdigest()
 
 
 def get_from_cache(cache_type: str, key: str):
-    """Obtener dato del caché"""
-    # Intentar Redis primero si está disponible
     if _redis_client:
         try:
             value = _redis_client.get(f"{cache_type}:{key}")
@@ -305,7 +300,6 @@ def get_from_cache(cache_type: str, key: str):
         except Exception as e:
             logger.warning(f"⚠️ Redis get error: {str(e)}")
     
-    # Fallback a caché en memoria
     with _cache_lock:
         if cache_type not in _cache:
             return None
@@ -319,17 +313,14 @@ def get_from_cache(cache_type: str, key: str):
 
 
 def set_in_cache(cache_type: str, key: str, value):
-    """Guardar dato en caché"""
     ttl = Config.CACHE_TTL.get(cache_type, 60)
     
-    # Intentar Redis primero si está disponible
     if _redis_client:
         try:
             _redis_client.setex(f"{cache_type}:{key}", ttl, json.dumps(value))
         except Exception as e:
             logger.warning(f"⚠️ Redis set error: {str(e)}")
     
-    # Siempre guardar en memoria (fallback)
     with _cache_lock:
         if cache_type not in _cache:
             return
@@ -480,10 +471,9 @@ def get_market_status():
 
 
 # ============================================================
-# HEALTH CHECK CON CACHÉ (LIVIANO)
+# HEALTH CHECK CON CACHÉ
 # ============================================================
 def check_services():
-    """Verificar estado de servicios externos (liviano, sin procesar noticias)"""
     cache_key = 'health_check'
     
     cached = get_from_cache('health', cache_key)
@@ -492,7 +482,6 @@ def check_services():
     
     services = {}
     
-    # Verificar Twelve Data (con timeout corto)
     if Config.TWELVE_DATA_API_KEY:
         try:
             url = f"https://api.twelvedata.com/price?symbol=AAPL&apikey={Config.TWELVE_DATA_API_KEY}"
@@ -503,7 +492,6 @@ def check_services():
     else:
         services['twelvedata'] = 'not_configured'
     
-    # Verificar Alpha Vantage
     if Config.ALPHA_VANTAGE_API_KEY:
         try:
             url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey={Config.ALPHA_VANTAGE_API_KEY}"
@@ -514,10 +502,8 @@ def check_services():
     else:
         services['alphavantage'] = 'not_configured'
     
-    # Verificar caché
     services['cache'] = 'ok'
     
-    # Verificar Redis (si está configurado)
     if _redis_client:
         try:
             _redis_client.ping()
@@ -527,7 +513,6 @@ def check_services():
     else:
         services['redis'] = 'not_configured'
     
-    # Solo verificar que el pipeline existe, no ejecutarlo
     try:
         from news_pipeline import process_news_for_ticker
         services['news_pipeline'] = 'configured'
@@ -539,11 +524,10 @@ def check_services():
 
 
 # ============================================================
-# FUNCIONES DE NOTICIAS (CON CACHÉ Y CIRCUIT BREAKER)
+# FUNCIONES DE NOTICIAS
 # ============================================================
 @cb_news
 def get_news(ticker):
-    """Obtener noticias con caché y circuit breaker"""
     cache_key = get_cache_key('news', ticker)
     
     cached = get_from_cache('news', cache_key)
@@ -556,7 +540,6 @@ def get_news(ticker):
     logger.info(f"📊 Obteniendo noticias para {ticker}")
     news_data = process_news_for_ticker(ticker)
     
-    # Validar respuesta
     if not news_data or 'sentiment' not in news_data:
         logger.warning(f"⚠️ Respuesta inválida de news_pipeline para {ticker}")
         return {'headlines': [], 'scores': [], 'sentiment': 0.0, 'count': 0}
@@ -566,13 +549,12 @@ def get_news(ticker):
 
 
 # ============================================================
-# FUNCIONES DE PRECIOS (CON CIRCUIT BREAKER)
+# FUNCIONES DE PRECIOS
 # ============================================================
 @with_semaphore
 @retry(max_retries=Config.MAX_RETRIES, delay=Config.RETRY_DELAY, exponential=True)
 @cb_twelvedata
 def fetch_twelvedata_price(ticker):
-    """Obtener precio desde Twelve Data con circuit breaker"""
     if not Config.TWELVE_DATA_API_KEY:
         return None
     
@@ -582,7 +564,6 @@ def fetch_twelvedata_price(ticker):
     
     data = response.json()
     
-    # Validar respuesta
     if not data or 'price' not in data or data['price'] is None:
         logger.warning(f"⚠️ Twelve Data respuesta inválida para {ticker}: {data}")
         return None
@@ -598,7 +579,6 @@ def fetch_twelvedata_price(ticker):
 @retry(max_retries=Config.MAX_RETRIES, delay=Config.RETRY_DELAY, exponential=True)
 @cb_alphavantage
 def fetch_alphavantage_price(ticker):
-    """Obtener precio desde Alpha Vantage con circuit breaker"""
     if not Config.ALPHA_VANTAGE_API_KEY:
         return None
     
@@ -608,7 +588,6 @@ def fetch_alphavantage_price(ticker):
     
     data = response.json()
     
-    # Validar respuesta
     if not data or 'Global Quote' not in data:
         return None
     
@@ -623,9 +602,7 @@ def fetch_alphavantage_price(ticker):
 
 
 def fetch_yfinance_price(ticker):
-    """Obtener precio desde Yahoo Finance (fallback) sin ThreadPool anidado"""
     try:
-        # Usar requests con timeout en lugar de ThreadPool
         stock = yf.Ticker(ticker)
         hist = stock.history(period="2d")
         if not hist.empty:
@@ -636,7 +613,6 @@ def fetch_yfinance_price(ticker):
 
 
 def get_price(ticker):
-    """Obtener precio con caché: Twelve Data -> Alpha Vantage -> Yahoo Finance"""
     cache_key = get_cache_key('price', ticker)
     
     cached = get_from_cache('price', cache_key)
@@ -680,7 +656,6 @@ def get_price(ticker):
 @retry(max_retries=Config.MAX_RETRIES, delay=Config.RETRY_DELAY, exponential=True)
 @cb_twelvedata
 def fetch_twelvedata_history_full(ticker, days=30):
-    """Obtener historial completo desde Twelve Data"""
     if not Config.TWELVE_DATA_API_KEY:
         return None
     
@@ -690,7 +665,6 @@ def fetch_twelvedata_history_full(ticker, days=30):
     
     data = response.json()
     
-    # Validar respuesta
     if not data or 'values' not in data or not data['values']:
         logger.warning(f"⚠️ Twelve Data history inválida para {ticker}")
         return None
@@ -717,7 +691,6 @@ def fetch_twelvedata_history_full(ticker, days=30):
 @retry(max_retries=Config.MAX_RETRIES, delay=Config.RETRY_DELAY, exponential=True)
 @cb_alphavantage
 def fetch_alphavantage_history_full(ticker, days=30):
-    """Obtener historial completo desde Alpha Vantage"""
     if not Config.ALPHA_VANTAGE_API_KEY:
         return None
     
@@ -752,7 +725,6 @@ def fetch_alphavantage_history_full(ticker, days=30):
 
 
 def get_price_history_full(ticker, days=30):
-    """Obtener historial completo con caché"""
     cache_key = get_cache_key('history_full', ticker, str(days))
     
     cached = get_from_cache('history_full', cache_key)
@@ -785,7 +757,6 @@ def get_price_history_full(ticker, days=30):
 
 
 def get_price_history(ticker, days=30):
-    """Obtener solo precios (para análisis)"""
     history = get_price_history_full(ticker, days)
     return [item['close'] for item in history] if history else []
 
@@ -914,11 +885,9 @@ def process_ticker(ticker):
 
 
 def process_tickers_parallel(tickers):
-    """Procesar múltiples tickers en paralelo con control de concurrencia"""
     normalized = [t.strip().upper() for t in tickers if t.strip()]
     unique_tickers = list(set(normalized))
     
-    # Validar límite
     if len(unique_tickers) > Config.MAX_TICKERS:
         logger.warning(f"⚠️ Demasiados tickers: {len(unique_tickers)}, limitando a {Config.MAX_TICKERS}")
         unique_tickers = unique_tickers[:Config.MAX_TICKERS]
@@ -943,10 +912,9 @@ def process_tickers_parallel(tickers):
 
 
 # ============================================================
-# CACHÉ PARA SEÑALES (CONTINUACIÓN)
+# CACHÉ PARA SEÑALES
 # ============================================================
 def get_cached_signals(tickers_str: str):
-    """Obtener señales con caché de 60 segundos"""
     cache_key = get_cache_key('signal', tickers_str)
     
     cached = get_from_cache('signal', cache_key)
@@ -976,14 +944,106 @@ def get_cached_signals(tickers_str: str):
 
 
 # ============================================================
-# RUTAS DE LA API
+# ============================================================
+# NUEVO ENDPOINT: /api/ticker/<ticker> 
+# ============================================================
+@app.route('/api/ticker/<ticker>')
+@limiter.limit(Config.RATE_LIMIT_ANALYSIS)
+def get_ticker_data(ticker):
+    """
+    Endpoint específico para obtener datos de un ticker individual
+    Este es el endpoint que el frontend está solicitando
+    """
+    try:
+        ticker = ticker.strip().upper()
+        logger.info(f"📊 Obteniendo datos para {ticker}")
+        
+        # Verificar si el ticker es soportado
+        if ticker not in SUPPORTED_TICKERS:
+            return jsonify({
+                'error': f'Ticker {ticker} no soportado',
+                'supported_tickers': list(SUPPORTED_TICKERS)
+            }), 400
+        
+        # Verificar caché para este ticker
+        cache_key = get_cache_key('ticker', ticker)
+        cached = get_from_cache('ticker', cache_key)
+        if cached is not None:
+            logger.info(f"📊 CACHÉ: Datos para {ticker}")
+            if hasattr(g, 'metrics'):
+                g.metrics.cache_hit = True
+            return jsonify(cached)
+        
+        # Obtener datos
+        news_data = get_news(ticker)
+        sentiment_zscore = calculate_sentiment_zscore(news_data.get('sentiment'))
+        
+        price_history = get_price_history(ticker, days=30)
+        momentum_zscore = calculate_momentum_zscore(price_history)
+        
+        ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
+        if ndi is None:
+            ndi = 0.0
+        
+        # Obtener precio actual
+        price = get_price(ticker)
+        
+        # Clasificar régimen
+        regime_info = classify_regime(ndi)
+        
+        # Calcular confianza
+        confidence = calculate_confidence(
+            sentiment_zscore,
+            momentum_zscore,
+            len(news_data.get('headlines', [])),
+            len(price_history)
+        )
+        
+        # Información de la empresa
+        company_info = get_company_info(ticker)
+        
+        # Preparar respuesta
+        response = {
+            'ticker': ticker,
+            'company_name': company_info['company_name'],
+            'sector': company_info['sector'],
+            'industry': company_info['industry'],
+            'price': price,
+            'ndi': round(ndi, 3),
+            'sentiment': round(sentiment_zscore, 3),
+            'momentum': round(momentum_zscore, 3),
+            'regime': regime_info['regime'],
+            'signal': regime_info['label'],
+            'color': regime_info['color'],
+            'confidence': confidence,
+            'news_count': len(news_data.get('headlines', [])),
+            'market_status': get_market_status(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'disclaimer': FINANCIAL_DISCLAIMER
+        }
+        
+        # Guardar en caché
+        set_in_cache('ticker', cache_key, response)
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        logger.error(f"❌ Error en /api/ticker/{ticker}: {str(e)}")
+        return jsonify({
+            'error': str(e),
+            'ticker': ticker,
+            'disclaimer': FINANCIAL_DISCLAIMER
+        }), 500
+
+
+# ============================================================
+# RUTAS EXISTENTES DE LA API
 # ============================================================
 @app.route('/')
 def root():
-    """Ruta raíz con información de la API"""
     return jsonify({
         'name': 'SignalIQ API',
-        'version': '8.0',
+        'version': '8.1',
         'status': 'operational',
         'mode': 'twelvedata_with_news',
         'market_status': get_market_status(),
@@ -991,6 +1051,7 @@ def root():
         'endpoints': {
             'health': '/health',
             'signals': '/api/signals-live?tickers=AAPL,MSFT',
+            'ticker': '/api/ticker/TSLA',
             'analysis': '/api/ticker/analysis/NVDA',
             'prices': '/api/prices/AAPL',
             'tickers': '/api/tickers'
@@ -1002,7 +1063,6 @@ def root():
 @app.route('/api/health')
 @limiter.exempt
 def health():
-    """Health check con verificación de servicios"""
     services = check_services()
     all_ok = all(status == 'ok' for status in services.values() if status != 'not_configured')
     
@@ -1019,7 +1079,6 @@ def health():
 @app.route('/api/signals-live')
 @limiter.limit(Config.RATE_LIMIT)
 def signals_live():
-    """Obtener señales en vivo para múltiples tickers"""
     tickers_param = request.args.get('tickers', '')
     ticker_list = [t.strip() for t in tickers_param.split(',') if t.strip()]
     
@@ -1030,7 +1089,6 @@ def signals_live():
             'disclaimer': FINANCIAL_DISCLAIMER
         }), 400
     
-    # Normalizar tickers
     normalized = [t.upper() for t in ticker_list]
     valid_tickers = [t for t in normalized if t in SUPPORTED_TICKERS]
     invalid_tickers = [t for t in normalized if t not in SUPPORTED_TICKERS]
@@ -1069,9 +1127,7 @@ def signals_live():
 @app.route('/api/ticker/analysis/<ticker>')
 @limiter.limit(Config.RATE_LIMIT_ANALYSIS)
 def ticker_analysis(ticker):
-    """Análisis detallado de un ticker individual"""
     try:
-        # Normalizar ticker
         ticker = ticker.strip().upper()
         logger.info(f"📊 Analizando {ticker}")
         
@@ -1203,7 +1259,6 @@ def ticker_analysis(ticker):
 
 @app.route('/api/prices/<ticker>')
 def get_prices(ticker):
-    """Obtener historial de precios con caché completo"""
     try:
         ticker = ticker.strip().upper()
         logger.info(f"📊 Obteniendo historial de precios para {ticker}")
@@ -1238,7 +1293,6 @@ def get_prices(ticker):
 @app.route('/api/tickers')
 @limiter.exempt
 def get_tickers():
-    """Obtener lista de tickers soportados"""
     return jsonify({
         'tickers': list(SUPPORTED_TICKERS),
         'count': len(SUPPORTED_TICKERS),
@@ -1253,7 +1307,7 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     
     logger.info("=" * 60)
-    logger.info("🚀 SignalIQ API v8.0 - Ultimate Production Ready")
+    logger.info("🚀 SignalIQ API v8.1 - Ultimate Production Ready")
     logger.info("=" * 60)
     logger.info(f"📊 Puerto: {port}")
     logger.info(f"📊 Entorno: {Config.ENV}")
