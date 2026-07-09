@@ -43,7 +43,7 @@ class Config:
         'history_full': 300,
         'news': 300,
         'health': 60,
-        'ticker': 60  # Nuevo TTL para ticker individual
+        'ticker': 60
     }
     
     # Threads y concurrencia
@@ -78,6 +78,29 @@ class Config:
     # Circuit Breaker
     CIRCUIT_BREAKER_THRESHOLD = 5
     CIRCUIT_BREAKER_TIMEOUT = 60
+
+
+# ============================================================
+# LOGGING SIMPLIFICADO (SIN request_id)
+# ============================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s: %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# REQUEST ID PARA TRAZABILIDAD
+# ============================================================
+def get_request_id():
+    """Obtener o generar un ID único para la request"""
+    try:
+        if not hasattr(g, 'request_id'):
+            g.request_id = str(uuid.uuid4())[:8]
+        return g.request_id
+    except RuntimeError:
+        return "system"
 
 
 # ============================================================
@@ -163,47 +186,6 @@ def with_semaphore(func):
 
 
 # ============================================================
-# REQUEST ID PARA TRAZABILIDAD
-# ============================================================
-def get_request_id():
-    """Obtener o generar un ID único para la request"""
-    try:
-        if not hasattr(g, 'request_id'):
-            g.request_id = str(uuid.uuid4())[:8]
-        return g.request_id
-    except RuntimeError:
-        return "system"
-
-
-# ============================================================
-# LOGGING CON REQUEST ID (CORREGIDO)
-# ============================================================
-class RequestIdFilter(logging.Filter):
-    def filter(self, record):
-        try:
-            # Intentar obtener request_id del contexto de Flask (g)
-            record.request_id = getattr(g, 'request_id', 'system')
-        except RuntimeError:
-            # Si no hay contexto de solicitud (ej: durante el arranque)
-            record.request_id = 'system'
-        return True
-
-# Configuración del logger
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(request_id)s] %(levelname)s: %(message)s'
-)
-
-# Obtener el logger raíz y agregar el filtro
-logger = logging.getLogger(__name__)
-logger.addFilter(RequestIdFilter())
-
-# También agregar el filtro al logger raíz para que todas las salidas tengan request_id
-root_logger = logging.getLogger()
-root_logger.addFilter(RequestIdFilter())
-
-
-# ============================================================
 # RETRY DECORATOR CON BACKOFF EXPONENCIAL
 # ============================================================
 def retry(max_retries=3, delay=1, exponential=True):
@@ -271,7 +253,7 @@ _cache = {
     'history_full': {},
     'news': {},
     'health': {},
-    'ticker': {}  # Nuevo caché para ticker
+    'ticker': {}
 }
 _cache_timestamps = {
     'signal': {},
@@ -951,7 +933,6 @@ def get_cached_signals(tickers_str: str):
     return response
 
 
-# ============================================================
 # ============================================================
 # NUEVO ENDPOINT: /api/ticker/<ticker> 
 # ============================================================
