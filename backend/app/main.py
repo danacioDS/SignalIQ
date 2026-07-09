@@ -59,6 +59,32 @@ def get_cache_key(tickers_str: str) -> str:
     """Generar una clave única para el caché"""
     return hashlib.md5(tickers_str.encode()).hexdigest()
 
+def get_price_twelvedata(ticker):
+    """Obtener precio desde Twelve Data"""
+    try:
+        api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
+        if not api_key:
+            logger.warning(f"⚠️ No hay API key de Twelve Data para {ticker}")
+            return None
+        
+        url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={api_key}"
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'price' in data and data['price'] is not None:
+                price = float(data['price'])
+                logger.info(f"💰 Twelve Data: ${price} para {ticker}")
+                return price
+            else:
+                logger.warning(f"⚠️ Twelve Data no devolvió precio para {ticker}: {data}")
+        else:
+            logger.warning(f"⚠️ Twelve Data error {response.status_code} para {ticker}")
+    except Exception as e:
+        logger.warning(f"⚠️ Twelve Data falló para {ticker}: {str(e)}")
+    
+    return None
+
 def get_cached_signals(tickers_str: str):
     """Obtener señales con caché de 60 segundos"""
     cache_key = get_cache_key(tickers_str)
@@ -86,7 +112,9 @@ def get_cached_signals(tickers_str: str):
                 ndi = 0.0
             
             regime = classify_regime(ndi)
-            price = get_price_yfinance(ticker)
+            
+            # ✅ Usar Twelve Data en lugar de yfinance
+            price = get_price_twelvedata(ticker)
             
             results.append({
                 'ticker': ticker,
@@ -199,24 +227,54 @@ def calculate_momentum_zscore(price_history):
 
 
 # ============================================================
-# FUNCIONES DE PRECIOS (SOLO YFINANCE)
+# FUNCIONES DE PRECIOS (TWELVE DATA + YFINANCE FALLBACK)
 # ============================================================
 
+def get_price_twelvedata(ticker):
+    """Obtener precio desde Twelve Data"""
+    try:
+        api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
+        if not api_key:
+            logger.warning(f"⚠️ No hay API key de Twelve Data para {ticker}")
+            return None
+        
+        url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={api_key}"
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'price' in data and data['price'] is not None:
+                price = float(data['price'])
+                logger.info(f"💰 Twelve Data: ${price} para {ticker}")
+                return price
+            else:
+                logger.warning(f"⚠️ Twelve Data no devolvió precio para {ticker}: {data}")
+        else:
+            logger.warning(f"⚠️ Twelve Data error {response.status_code} para {ticker}")
+    except Exception as e:
+        logger.warning(f"⚠️ Twelve Data falló para {ticker}: {str(e)}")
+    
+    return None
+
 def get_price_yfinance(ticker):
-    """Obtener precio desde Yahoo Finance"""
+    """Obtener precio desde Yahoo Finance (fallback)"""
     try:
         stock = yf.Ticker(ticker, session=yf_session)
         hist = stock.history(period="2d", timeout=10)
         if not hist.empty:
             price = hist['Close'].iloc[-1]
-            logger.info(f"💰 yfinance: ${price} para {ticker}")
+            logger.info(f"💰 yfinance (fallback): ${price} para {ticker}")
             return price
     except Exception as e:
         logger.error(f"❌ yfinance error para {ticker}: {str(e)}")
     return None
 
 def get_price(ticker):
-    """Obtener precio desde Yahoo Finance"""
+    """Obtener precio: primero Twelve Data, luego yfinance como fallback"""
+    price = get_price_twelvedata(ticker)
+    if price is not None:
+        return price
+    logger.info(f"🔄 Usando fallback yfinance para {ticker}")
     return get_price_yfinance(ticker)
 
 def get_company_info(ticker):
@@ -248,7 +306,7 @@ def root():
         'name': 'SignalIQ API',
         'version': '2026-07-07',
         'status': 'operational',
-        'mode': 'yfinance_with_news'
+        'mode': 'twelvedata_with_news'
     })
 
 @app.route('/health')
@@ -257,7 +315,7 @@ def health():
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now(timezone.utc).isoformat(),
-        'mode': 'yfinance_with_news'
+        'mode': 'twelvedata_with_news'
     })
 
 @app.route('/api/signals-live')
@@ -303,8 +361,8 @@ def ticker_analysis(ticker):
                 'source': 'RSS Feed'
             })
         
-        # 2. Obtener precio (desde Yahoo Finance)
-        price = get_price_yfinance(ticker)
+        # 2. Obtener precio (desde Twelve Data)
+        price = get_price(ticker)
         price_available = price is not None
         price_history = []
         
@@ -415,82 +473,90 @@ def ticker_analysis(ticker):
 
 @app.route('/api/prices/<ticker>')
 def get_prices(ticker):
-    """Obtener historial de precios para el gráfico"""
+    """Obtener historial de precios desde Twelve Data"""
     try:
         ticker = ticker.upper()
         logger.info(f"📊 Obteniendo historial de precios para {ticker}")
         
-        # Crear una nueva sesión con headers más completos
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-        })
-        
-        # Usar yfinance con la sesión
-        import yfinance as yf
-        stock = yf.Ticker(ticker, session=session)
-        
-        # Intentar obtener datos con diferentes períodos
-        periods = ["5d", "7d", "14d", "30d"]
-        hist = None
-        
-        for period in periods:
+        # Usar Twelve Data en lugar de yfinance
+        api_key = os.environ.get('TWELVE_DATA_API_KEY', '')
+        if not api_key:
+            logger.warning("⚠️ No hay API key de Twelve Data")
+            # Intentar con yfinance como fallback
             try:
-                logger.info(f"🔄 Intentando con período {period}...")
-                hist = stock.history(period=period, timeout=15)
-                if hist is not None and not hist.empty:
-                    logger.info(f"✅ Datos encontrados para {ticker} con período {period}")
-                    break
+                import yfinance as yf
+                stock = yf.Ticker(ticker)
+                hist = stock.history(period="30d", timeout=10)
+                if not hist.empty:
+                    price_history = []
+                    for date, row in hist.iterrows():
+                        price_history.append({
+                            'date': date.strftime('%Y-%m-%d'),
+                            'close': float(row['Close'])
+                        })
+                    return jsonify({
+                        'ticker': ticker,
+                        'price_history': price_history
+                    })
             except Exception as e:
-                logger.warning(f"⚠️ Falló período {period}: {str(e)}")
-                continue
+                logger.error(f"❌ Fallback yfinance también falló: {str(e)}")
+            return jsonify({'error': 'API key not configured'}), 500
         
-        if hist is not None and not hist.empty:
+        # Obtener datos de Twelve Data
+        url = f"https://api.twelvedata.com/time_series?symbol={ticker}&interval=1day&outputsize=30&apikey={api_key}"
+        response = requests.get(url, timeout=15)
+        
+        if response.status_code != 200:
+            logger.error(f"❌ Twelve Data error: {response.status_code}")
+            return jsonify({'error': 'Failed to fetch data'}), response.status_code
+        
+        data = response.json()
+        
+        if 'values' in data and data['values']:
             price_history = []
-            for date, row in hist.iterrows():
+            for item in data['values']:
                 price_history.append({
-                    'date': date.strftime('%Y-%m-%d'),
-                    'close': float(row['Close'])
+                    'date': item['datetime'][:10],
+                    'close': float(item['close'])
                 })
+            # Invertir para que sea cronológico
+            price_history.reverse()
             return jsonify({
                 'ticker': ticker,
                 'price_history': price_history
             })
         else:
-            # Si no hay datos, devolver datos de ejemplo
-            logger.warning(f"⚠️ No se encontraron datos para {ticker}, usando datos de ejemplo")
-            # Generar datos de ejemplo para que el gráfico funcione
-            import random
-            from datetime import datetime, timedelta
-            
-            sample_history = []
-            base_price = 200.0 if ticker == 'NVDA' else 100.0
-            current_date = datetime.now()
-            
-            for i in range(30, 0, -1):
-                date = current_date - timedelta(days=i)
-                price = base_price + random.uniform(-10, 10)
-                sample_history.append({
-                    'date': date.strftime('%Y-%m-%d'),
-                    'close': round(price, 2)
-                })
+            logger.warning(f"⚠️ No se encontraron datos para {ticker}")
+            # Intentar con yfinance como fallback
+            try:
+                import yfinance as yf
+                stock = yf.Ticker(ticker)
+                hist = stock.history(period="30d", timeout=10)
+                if not hist.empty:
+                    price_history = []
+                    for date, row in hist.iterrows():
+                        price_history.append({
+                            'date': date.strftime('%Y-%m-%d'),
+                            'close': float(row['Close'])
+                        })
+                    return jsonify({
+                        'ticker': ticker,
+                        'price_history': price_history
+                    })
+            except Exception as e:
+                logger.error(f"❌ Fallback yfinance también falló: {str(e)}")
             
             return jsonify({
                 'ticker': ticker,
-                'price_history': sample_history,
-                'sample': True,
-                'message': 'Datos de muestra generados'
-            })
+                'price_history': [],
+                'message': 'No hay datos disponibles para este ticker'
+            }), 200
             
     except Exception as e:
         logger.error(f"❌ Error en /api/prices/{ticker}: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tickers')
 def get_tickers():
     return jsonify({
         'tickers': ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META', 'AMD', 'AMZN', 'JPM', 'KO'],
@@ -500,5 +566,5 @@ def get_tickers():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     logger.info(f"🚀 SignalIQ API en puerto {port}")
-    logger.info("📊 Usando yfinance + noticias reales")
+    logger.info("📊 Usando Twelve Data + noticias reales")
     app.run(host='0.0.0.0', port=port, debug=False)
