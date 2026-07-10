@@ -204,7 +204,7 @@ def calculate_ndi(ticker):
         # ⭐ NOTICIAS REALES DEL PIPELINE
         news_data = process_news_for_ticker(ticker)
         sentiment = news_data.get('sentiment', 0.0)
-        headlines = news_data.get('headlines', [])
+        headlines = news_data.get('headlines', [])  # ⭐ Agregar esta línea
         news_count = news_data.get('count', 0)
         
         # Si no hay noticias, usar sentimiento simulado como fallback
@@ -269,7 +269,7 @@ def calculate_ndi(ticker):
             'confidence': confidence,
             'price_history': price_history_formatted,
             'news_count': news_count,
-            'headlines': headlines[:5],  # ⭐ Noticias reales
+            'headlines': headlines[:5] if headlines else [],  # ⭐ Agregar esta línea
             'timestamp': datetime.now().isoformat()
         }
         
