@@ -20,21 +20,20 @@ export default function TickerAnalysis({ ticker, onBack }: TickerAnalysisProps) 
       try {
         setLoading(true);
         setError("");
-        const response = await fetch(`https://signaliq-l8mi.onrender.com/api/prices/${ticker}`);
+        const response = await fetch(`https://signaliq-api.onrender.com/api/ticker/${ticker}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const result = await response.json();
         if (result.error) throw new Error(result.error);
         setData(result);
+        
         if (result.price_history && result.price_history.length > 0) {
-          const prices = result.price_history.map((item: any) => item.close);
-          const min = Math.min(...prices);
-          const max = Math.max(...prices);
-          const range = max - min;
-          const normalized = result.price_history.map((item: any) => ({
+          const formatted = result.price_history.map((item: any) => ({
             date: item.date,
-            ndi: range > 0 ? (item.close - min) / range : 0.5
+            price: item.close,
+            close: item.close
           }));
-          setPriceHistory(normalized);
+          setPriceHistory(formatted);
+          console.log(`📊 ${ticker} - price_history cargado:`, formatted.length);
         }
       } catch (err) {
         console.error('Error fetching ticker data:', err);
@@ -47,7 +46,6 @@ export default function TickerAnalysis({ ticker, onBack }: TickerAnalysisProps) 
     fetchData();
   }, [ticker]);
 
-  // ── Determinar régimen ──────────────────────────────────────────────────────
   const getRegimeInfo = (ndi: number) => {
     if (ndi > 1.5) return { label: "Overheating", color: C.red, bg: C.redBg, icon: "🔴" };
     if (ndi > 0.5) return { label: "Watching", color: C.yellow, bg: C.yellowBg, icon: "🟡" };
@@ -55,7 +53,6 @@ export default function TickerAnalysis({ ticker, onBack }: TickerAnalysisProps) 
     return { label: "Undervalued", color: C.blue, bg: C.blueBg, icon: "🔵" };
   };
 
-  // ── Generar interpretación ──────────────────────────────────────────────────
   const getInterpretation = (ndi: number, sentiment: number, momentum: number) => {
     if (ndi > 1.5) {
       return `El sentimiento (${sentiment.toFixed(2)}) está muy por encima del momentum (${momentum.toFixed(1)}%). Históricamente, niveles similares han precedido correcciones de corto plazo. Se recomienda precaución.`;
@@ -104,7 +101,6 @@ export default function TickerAnalysis({ ticker, onBack }: TickerAnalysisProps) 
 
   return (
     <div style={{ padding: "24px 32px", maxWidth: 1200 }}>
-      {/* ── Botón Volver ── */}
       <button onClick={onBack} style={{
         background: "transparent",
         border: "none",
@@ -120,7 +116,6 @@ export default function TickerAnalysis({ ticker, onBack }: TickerAnalysisProps) 
         ← Volver al Dashboard
       </button>
 
-      {/* ── Header ── */}
       <div style={{
         background: C.card,
         border: `1px solid ${C.cardBorder}`,
@@ -151,10 +146,7 @@ export default function TickerAnalysis({ ticker, onBack }: TickerAnalysisProps) 
         </div>
       </div>
 
-      {/* ── Grid de análisis ── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
-        
-        {/* ── Termómetro NDI ── */}
         <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px" }}>
           <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>🎯 NDI Termometer</h3>
           <div style={{ position: "relative", padding: "8px 0" }}>
@@ -193,7 +185,6 @@ export default function TickerAnalysis({ ticker, onBack }: TickerAnalysisProps) 
           </div>
         </div>
 
-        {/* ── Interpretación ── */}
         <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px" }}>
           <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>📖 Interpretación</h3>
           <p style={{ fontSize: 13, lineHeight: 1.6, color: C.muted }}>{interpretation}</p>
@@ -205,7 +196,6 @@ export default function TickerAnalysis({ ticker, onBack }: TickerAnalysisProps) 
         </div>
       </div>
 
-      {/* ── Comparativa con sector ── */}
       <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px", marginBottom: 24 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>📊 Comparativa con el sector</h3>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -232,28 +222,31 @@ export default function TickerAnalysis({ ticker, onBack }: TickerAnalysisProps) 
         </p>
       </div>
 
-      {/* ── Gráfico de evolución ── */}
+      {/* ── GRÁFICO DE PRECIOS ── */}
       <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, padding: "20px", marginBottom: 24 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>📈 NDI Evolution</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>📈 Price Evolution ({ticker})</h3>
         {priceHistory.length > 0 ? (
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={priceHistory}>
               <defs>
-                <linearGradient id="gNDI" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="gPrice" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={C.accent} stopOpacity={0.3} />
                   <stop offset="95%" stopColor={C.accent} stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
               <XAxis dataKey="date" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} domain={[0, 1]} />
-              <Tooltip contentStyle={{ background: C.sidebar, border: `1px solid ${C.cardBorder}`, borderRadius: 8 }} />
-              <Area type="monotone" dataKey="ndi" name="NDI" stroke={C.accent} strokeWidth={2} fill="url(#gNDI)" />
+              <YAxis tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} domain={['auto', 'auto']} tickFormatter={(value) => `$${value}`} />
+              <Tooltip contentStyle={{ background: C.sidebar, border: `1px solid ${C.cardBorder}`, borderRadius: 8 }} formatter={(value) => [`$${value}`, 'Price']} />
+              <Area type="monotone" dataKey="price" name="Price" stroke={C.accent} strokeWidth={2} fill="url(#gPrice)" />
             </AreaChart>
           </ResponsiveContainer>
         ) : (
           <div style={{ textAlign: "center", padding: "40px 0", color: C.muted }}>
-            <p>No historical data available</p>
+            <p>No price data available</p>
+            <p style={{ fontSize: 12, marginTop: 8 }}>
+              {ticker} - No se recibió historial de precios
+            </p>
           </div>
         )}
       </div>

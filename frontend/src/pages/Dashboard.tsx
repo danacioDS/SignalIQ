@@ -13,7 +13,6 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useSignalAnalysis } from '../hooks/useSignalAnalysis';
-import { getPriceFromYahoo } from '../services/yahoo-finance-service';
 
 // ==================== CONFIGURACIÓN ====================
 const API_BASE = 'https://signaliq-api.onrender.com';
@@ -178,7 +177,6 @@ export default function Dashboard() {
       setLoading(true);
       setError('');
 
-      // 1. Obtener NDI del backend (los precios ya vienen aquí)
       const url = api.signals(defaultTickers);
       console.log('📊 Fetching URL:', url);
 
@@ -196,29 +194,40 @@ export default function Dashboard() {
       console.log('📊 Data received:', data);
 
       if (data?.success && Array.isArray(data.signals) && data.signals.length > 0) {
-        // ✅ LOS PRECIOS YA VIENEN EN data.signals (current_price)
-        console.log('📊 Usando precios de /api/signals-live (una sola llamada)...');
+        // ✅ LOS PRECIOS Y price_history YA VIENEN EN data.signals
+        console.log('📊 Usando datos de /api/signals-live (una sola llamada)...');
 
-        // 2. Combinar NDI + precios (usando los precios que ya tenemos)
-        const formatted = data.signals.map((item: any) => {
-          // Usar el precio que ya vino en la respuesta
-          const price = item.current_price || 0;
-          return {
-            ticker: item.ticker,
-            ndi: item.ndi || 0,
-            sentiment: item.sentiment_zscore ?? 0,
-            momentum: item.momentum_zscore ?? 0,
-            price: price, // ✅ Precio real de /api/signals-live
-            sector: sectorMap[item.ticker] || 'Other',
-            confidence: item.confidence || 70,
-            regime: item.regime || 'No Data',
-            companyName: item.ticker,
-          };
-        });
+        const formatted = data.signals.map((item: any) => ({
+          ticker: item.ticker,
+          ndi: item.ndi || 0,
+          sentiment: item.sentiment || 0,
+          momentum: item.momentum || 0,
+          price: item.current_price || item.price || 0,
+          sector: sectorMap[item.ticker] || 'Other',
+          confidence: item.confidence || 70,
+          regime: item.regime || 'No Data',
+          companyName: item.ticker,
+          price_history: item.price_history || [], // ⭐ Guardar price_history
+          headlines: item.headlines || [],
+          news_count: item.news_count || 0,
+        }));
 
-        console.log('📊 Datos formateados (con precios de signals-live):', formatted);
+        console.log('📊 Datos formateados:', formatted);
 
         setSignals(formatted);
+        
+        // ✅ Si hay un ticker seleccionado, actualizar su price_history
+        if (selectedTicker) {
+          const selectedData = formatted.find((s: any) => s.ticker === selectedTicker);
+          if (selectedData?.price_history?.length > 0) {
+            const formattedHistory = selectedData.price_history.map((item: any) => ({
+              date: item.date,
+              close: item.close || item.price || 0
+            }));
+            setPriceHistory(formattedHistory);
+            console.log(`📊 ${selectedTicker} - price_history actualizado: ${formattedHistory.length} puntos`);
+          }
+        }
         
         if (formatted.length > 0 && !selectedTicker) {
           setSelectedTicker(formatted[0].ticker);
@@ -253,39 +262,43 @@ export default function Dashboard() {
     };
   }, [fetchSignals]);
 
-  // Historial de precios desde Yahoo Finance (frontend)
+  // ⭐ ACTUALIZAR price_history cuando cambia el ticker seleccionado (usando los datos que ya tenemos)
   useEffect(() => {
-    const fetchPriceHistory = async () => {
-      if (!selectedTicker) return;
+    if (!selectedTicker || signals.length === 0) {
+      setPriceHistory([]);
+      return;
+    }
 
-      try {
-        console.log(`📊 Obteniendo historial de precios para ${selectedTicker} desde Yahoo Finance...`);
-        const priceData = await getPriceFromYahoo(selectedTicker);
-        if (priceData?.history && priceData.history.length > 0) {
-          setPriceHistory(priceData.history);
-          
-          // ✅ OBTENER EL PRECIO ACTUAL DEL HISTORIAL
-          const lastPrice = priceData.history[priceData.history.length - 1].close;
-          console.log(`📊 Precio actual de ${selectedTicker}: $${lastPrice}`);
-          
-          // Actualizar el precio en signals
-          setSignals(prevSignals => 
-            prevSignals.map(s => 
-              s.ticker === selectedTicker 
-                ? { ...s, price: lastPrice }
-                : s
-            )
-          );
-        } else {
-          console.warn(`⚠️ No se encontró historial para ${selectedTicker}`);
-        }
-      } catch (err) {
-        console.error('Error fetching price history:', err);
+    try {
+      const tickerData = signals.find((s: any) => s.ticker === selectedTicker);
+      
+      if (!tickerData) {
+        console.warn(`⚠️ No se encontraron datos para ${selectedTicker}`);
+        setPriceHistory([]);
+        return;
       }
-    };
 
-    fetchPriceHistory();
-  }, [selectedTicker]);
+      const history = tickerData.price_history || [];
+      
+      if (history.length === 0) {
+        console.warn(`⚠️ No hay price_history para ${selectedTicker}`);
+        setPriceHistory([]);
+        return;
+      }
+
+      const formatted = history.map((item: any) => ({
+        date: item.date,
+        close: item.close || item.price || 0
+      }));
+      
+      setPriceHistory(formatted);
+      console.log(`📊 ${selectedTicker} - price_history cargado: ${formatted.length} puntos`);
+      
+    } catch (error) {
+      console.error('Error procesando price_history:', error);
+      setPriceHistory([]);
+    }
+  }, [selectedTicker, signals]);
 
   const sectorAverages = signals.reduce((acc: any, s) => {
     if (!acc[s.sector]) acc[s.sector] = { total: 0, count: 0 };
@@ -367,6 +380,7 @@ export default function Dashboard() {
         </p>
       </div>
 
+      {/* ⭐ GRÁFICO DE PRECIOS - AHORA USA price_history DE signals */}
       <div style={{
         background: C.card,
         border: `1px solid ${C.cardBorder}`,
@@ -405,13 +419,17 @@ export default function Dashboard() {
                 axisLine={false} 
                 tickLine={false} 
                 domain={['auto', 'auto']} 
+                tickFormatter={(value) => `$${value}`}
               />
-              <Tooltip contentStyle={{ 
-                background: C.card, 
-                border: `1px solid ${C.cardBorder}`, 
-                borderRadius: 8,
-                color: C.text,
-              }} />
+              <Tooltip 
+                contentStyle={{ 
+                  background: C.card, 
+                  border: `1px solid ${C.cardBorder}`, 
+                  borderRadius: 8,
+                  color: C.text,
+                }} 
+                formatter={(value) => [`$${value}`, 'Price']}
+              />
               <Area 
                 type="monotone" 
                 dataKey="close" 
