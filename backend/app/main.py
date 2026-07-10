@@ -26,7 +26,7 @@ TWELVE_DATA_API_KEY = os.environ.get('TWELVE_DATA_API_KEY', '')
 # Caché simple
 cache = {}
 cache_lock = Lock()
-CACHE_TTL = 60
+CACHE_TTL = 300
 
 TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMD', 'AMZN', 'TSLA', 'JPM', 'KO']
 
