@@ -1226,7 +1226,78 @@ def get_tickers():
         'count': len(SUPPORTED_TICKERS),
         'disclaimer': FINANCIAL_DISCLAIMER
     })
-
+def process_ticker(ticker):
+    try:
+        news_data = get_news(ticker)
+        sentiment_zscore = calculate_sentiment_zscore(news_data.get('sentiment'))
+        
+        price_history = get_price_history(ticker, days=30)
+        momentum_zscore = calculate_momentum_zscore(price_history)
+        
+        ndi = calculate_narrative_divergence_index(sentiment_zscore, momentum_zscore)
+        if ndi is None:
+            ndi = 0.0
+        
+        regime = classify_regime(ndi)
+        price = get_price(ticker)
+        
+        confidence = calculate_confidence(
+            sentiment_zscore,
+            momentum_zscore,
+            len(news_data.get('headlines', [])),
+            len(price_history)
+        )
+        
+        return {
+            'ticker': ticker,
+            'ndi': ndi,
+            'sentiment_zscore': sentiment_zscore,
+            'momentum_zscore': momentum_zscore,
+            'current_price': price,
+            'regime': regime['regime'],
+            'confidence': confidence,
+            'news_count': len(news_data.get('headlines', [])),
+            'price_history_len': len(price_history)
+        }
+    except Exception as e:
+        logger.error(f"Error procesando {ticker}: {e}")
+        # Fallback con datos de Yahoo Finance directamente
+        try:
+            import yfinance as yf
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period="1mo")
+            if not hist.empty:
+                prices = [float(p) for p in hist['Close'].values]
+                current_price = prices[-1]
+                momentum = (prices[-1] - prices[-5]) / prices[-5] if len(prices) >= 5 else 0
+                sentiment = 0.1  # valor neutro
+                ndi = sentiment - momentum
+                regime = classify_regime(ndi)
+                return {
+                    'ticker': ticker,
+                    'ndi': ndi,
+                    'sentiment_zscore': sentiment,
+                    'momentum_zscore': momentum,
+                    'current_price': current_price,
+                    'regime': regime['regime'],
+                    'confidence': 50,
+                    'news_count': 0,
+                    'price_history_len': len(prices)
+                }
+        except:
+            pass
+        
+        return {
+            'ticker': ticker,
+            'ndi': 0,
+            'sentiment_zscore': 0,
+            'momentum_zscore': 0,
+            'current_price': None,
+            'regime': 'NEUTRAL',
+            'confidence': 0,
+            'news_count': 0,
+            'price_history_len': 0
+        }
 
 # ============================================================
 # PUNTO DE ENTRADA
