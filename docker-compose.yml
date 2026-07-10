@@ -1,10 +1,11 @@
 version: '3.8'
 
 services:
+  # API Principal
   signaliq-api:
     build: ./backend
     ports:
-      - "5000:5000"
+      - "10000:10000"  # Cambiar a 10000 para coincidir con Render
     env_file:
       - .env
     environment:
@@ -12,4 +13,39 @@ services:
       - GEMINI_API_KEY_2=${GEMINI_API_KEY_2:-}
       - GEMINI_API_KEY_3=${GEMINI_API_KEY_3:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - REDIS_URL=redis://redis:6379
+      - PORT=10000
+    depends_on:
+      - redis
     restart: unless-stopped
+    volumes:
+      - ./backend:/app
+      - cache_data:/app/cache
+
+  # Redis para caché persistente
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes --save 60 1
+
+  # Worker para actualizaciones en background
+  worker:
+    build: ./backend
+    command: python worker.py
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app
+
+volumes:
+  redis_data:
+  cache_data:

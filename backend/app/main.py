@@ -28,10 +28,10 @@ TWELVE_DATA_API_KEY = os.environ.get('TWELVE_DATA_API_KEY', '')
 cache = {}
 cache_lock = Lock()
 CACHE_TTL = {
-    'price': 300,      # 5 minutos
-    'history': 600,    # 10 minutos
-    'ticker': 300,     # 5 minutos
-    'signals': 60,     # 1 minuto
+    'price': 300,
+    'history': 600,
+    'ticker': 300,
+    'signals': 60,
 }
 
 TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMD', 'AMZN', 'TSLA', 'JPM', 'KO']
@@ -153,18 +153,21 @@ def get_price_history(ticker, days=30):
     except:
         pass
     
-    # 3. Historial simulado
+    # 3. Historial simulado (más realista)
     base_price = FALLBACK_PRICES.get(ticker, 100.0)
     price = base_price * 0.9
-    for _ in range(days):
-        price = price * (1 + random.uniform(-0.02, 0.02))
+    # Tendencias diferentes por ticker para más variedad
+    trend = random.uniform(-0.005, 0.005)
+    for i in range(days):
+        # Añadir tendencia y ruido
+        price = price * (1 + trend + random.uniform(-0.03, 0.03))
         history.append(round(price, 2))
     
     set_cached(cache_key, history, 'history')
     return history
 
 # ============================================================
-# ANÁLISIS NDI
+# ANÁLISIS NDI - VERSIÓN MEJORADA
 # ============================================================
 
 def classify_regime(ndi):
@@ -193,35 +196,49 @@ def calculate_ndi(ticker):
         price = get_price(ticker)
         history = get_price_history(ticker, days=30)
         
-        # Momentum
+        # 1. MOMENTUM - Cambio porcentual en 10 días
         if len(history) >= 10:
             momentum = (history[-1] - history[-10]) / history[-10]
         else:
             momentum = 0
         
-        # Sentimiento simulado (basado en precio y ticker)
-        random.seed(hash(ticker) % 1000)
-        sentiment = random.uniform(-0.3, 0.3)
+        # 2. SENTIMIENTO - Basado en precio reciente + volatilidad
         if len(history) >= 5:
-            change = (history[-1] - history[-5]) / history[-5]
-            sentiment += change * 2
-        sentiment = max(-1, min(1, sentiment))
+            change_5d = (history[-1] - history[-5]) / history[-5]
+            # Volatilidad
+            returns = []
+            recent = history[-10:] if len(history) >= 10 else history
+            for i in range(1, len(recent)):
+                if recent[i-1] != 0:
+                    returns.append((recent[i] - recent[i-1]) / recent[i-1])
+            volatility = np.std(returns) if len(returns) > 1 else 0.01
+            
+            # Sentimiento combinado
+            sentiment = change_5d * 5 + volatility * 2
+            sentiment = max(-1, min(1, sentiment))
+        else:
+            sentiment = 0
         
-        # NDI
-        ndi = sentiment - momentum
+        # 3. NDI - Con factor de escala para más dispersión
+        ndi = (sentiment - momentum) * 1.5
+        
+        # 4. Clasificar régimen
         regime = classify_regime(ndi)
         
-        # Confianza
+        # 5. Confianza
         confidence = 50
         if len(history) >= 30:
             confidence += 20
         if abs(ndi) > 0.5:
+            confidence += 15
+        if abs(ndi) > 1.0:
             confidence += 10
         confidence = min(95, confidence)
         
         result = {
             'ticker': ticker,
             'price': round(price, 2),
+            'current_price': round(price, 2),
             'sentiment': round(sentiment, 3),
             'momentum': round(momentum, 3),
             'ndi': round(ndi, 3),
@@ -267,6 +284,7 @@ def get_ticker(ticker):
         data = {
             'ticker': ticker,
             'price': 0,
+            'current_price': 0,
             'sentiment': 0,
             'momentum': 0,
             'ndi': 0,
@@ -310,7 +328,7 @@ def get_tickers():
 def root():
     return jsonify({
         'name': 'SignalIQ API',
-        'version': '5.0',
+        'version': '6.0',
         'mode': 'alpha_vantage_twelve_yahoo',
         'status': 'operational',
         'cache_ttl': CACHE_TTL,
@@ -325,7 +343,7 @@ def root():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     logger.info("=" * 50)
-    logger.info("🚀 SignalIQ API v5.0 - Caché Optimizado")
+    logger.info("🚀 SignalIQ API v6.0 - NDI más sensible")
     logger.info(f"📊 Puerto: {port}")
     logger.info(f"📊 Cache TTL: {CACHE_TTL}")
     logger.info(f"📊 Alpha Vantage: {'✅' if ALPHA_VANTAGE_API_KEY else '❌'}")
