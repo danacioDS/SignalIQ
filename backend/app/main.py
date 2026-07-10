@@ -217,7 +217,7 @@ def calculate_ndi(ticker):
                     if recent[i-1] != 0:
                         returns.append((recent[i] - recent[i-1]) / recent[i-1])
                 volatility = np.std(returns) if len(returns) > 1 else 0.01
-                sentiment = change_5d * 5 + volatility * 2
+                sentiment = change_5d * 8 + volatility * 3  # ⭐ Más peso al cambio de precio
                 sentiment = max(-1, min(1, sentiment))
             else:
                 sentiment = 0.0
@@ -229,7 +229,9 @@ def calculate_ndi(ticker):
             momentum = 0
         
         # NDI = Sentiment - Momentum
-        ndi = sentiment - momentum
+        ## ndi = sentiment - momentum
+        # DESPUÉS (con factor de escala)
+        ndi = (sentiment - momentum) * 2.5  # ⭐ Factor de escala para más sensibilidad
         regime = classify_regime(ndi)
         
         # Confianza (aumenta si hay noticias reales)
