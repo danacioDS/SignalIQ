@@ -231,7 +231,7 @@ def calculate_ndi(ticker):
         # NDI = Sentiment - Momentum
         ## ndi = sentiment - momentum
         # DESPUÉS (con factor de escala)
-        ndi = (sentiment - momentum) * 2.5  # ⭐ Factor de escala para más sensibilidad
+        ndi = (sentiment - momentum) * 3  # ⭐ Factor de escala para más sensibilidad
         regime = classify_regime(ndi)
         
         # Confianza (aumenta si hay noticias reales)
@@ -376,7 +376,7 @@ def get_tickers():
 def root():
     return jsonify({
         'name': 'SignalIQ API',
-        'version': '6.1',
+        'version': '6.2',
         'mode': 'alpha_vantage_twelve_yahoo',
         'status': 'operational',
         'cache_ttl': CACHE_TTL,
