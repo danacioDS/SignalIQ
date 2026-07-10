@@ -13,6 +13,8 @@ from flask_cors import CORS
 import yfinance as yf
 import requests
 import numpy as np
+# ⭐ IMPORTAR EL PIPELINE DE NOTICIAS REALES
+from news_pipeline import process_news_for_ticker
 
 # ============================================================
 # CONFIGURACIÓN
@@ -199,27 +201,39 @@ def calculate_ndi(ticker):
         price = get_price(ticker)
         history = get_price_history(ticker, days=30)
         
+        # ⭐ NOTICIAS REALES DEL PIPELINE
+        news_data = process_news_for_ticker(ticker)
+        sentiment = news_data.get('sentiment', 0.0)
+        headlines = news_data.get('headlines', [])
+        news_count = news_data.get('count', 0)
+        
+        # Si no hay noticias, usar sentimiento simulado como fallback
+        if news_count == 0:
+            logger.info(f"📊 Sin noticias para {ticker}, usando sentimiento simulado")
+            if len(history) >= 5:
+                change_5d = (history[-1] - history[-5]) / history[-5]
+                returns = []
+                recent = history[-10:] if len(history) >= 10 else history
+                for i in range(1, len(recent)):
+                    if recent[i-1] != 0:
+                        returns.append((recent[i] - recent[i-1]) / recent[i-1])
+                volatility = np.std(returns) if len(returns) > 1 else 0.01
+                sentiment = change_5d * 5 + volatility * 2
+                sentiment = max(-1, min(1, sentiment))
+            else:
+                sentiment = 0.0
+        
+        # Momentum
         if len(history) >= 10:
             momentum = (history[-1] - history[-10]) / history[-10]
         else:
             momentum = 0
         
-        if len(history) >= 5:
-            change_5d = (history[-1] - history[-5]) / history[-5]
-            returns = []
-            recent = history[-10:] if len(history) >= 10 else history
-            for i in range(1, len(recent)):
-                if recent[i-1] != 0:
-                    returns.append((recent[i] - recent[i-1]) / recent[i-1])
-            volatility = np.std(returns) if len(returns) > 1 else 0.01
-            sentiment = change_5d * 5 + volatility * 2
-            sentiment = max(-1, min(1, sentiment))
-        else:
-            sentiment = 0
-        
-        ndi = (sentiment - momentum) * 1.5
+        # NDI = Sentiment - Momentum
+        ndi = sentiment - momentum
         regime = classify_regime(ndi)
         
+        # Confianza (aumenta si hay noticias reales)
         confidence = 50
         if len(history) >= 30:
             confidence += 20
@@ -227,20 +241,20 @@ def calculate_ndi(ticker):
             confidence += 15
         if abs(ndi) > 1.0:
             confidence += 10
+        if news_count > 0:
+            confidence += 10  # ⭐ Bonus por noticias reales
         confidence = min(95, confidence)
         
-        # ⭐ FORMATO CORRECTO PARA EL FRONTEND
+        # ⭐ FORMATO CORRECTO PARA EL FRONTEND (con ndi para el gráfico)
         price_history_formatted = []
         history_data = history[-20:] if history else []
         for i, p in enumerate(history_data):
             date = (datetime.now() - timedelta(days=len(history_data) - i)).strftime('%Y-%m-%d')
             price_history_formatted.append({
                 'date': date,
-                'close': round(p, 2)
+                'close': round(p, 2),
+                'ndi': round(ndi, 3)  # ⭐ Para el gráfico
             })
-        
-        # ⭐ Noticias simuladas (para que news_count no sea null)
-        news_count = len(history) // 2 if len(history) > 2 else 1
         
         result = {
             'ticker': ticker,
@@ -253,8 +267,9 @@ def calculate_ndi(ticker):
             'signal': regime['label'],
             'color': regime['color'],
             'confidence': confidence,
-            'price_history': price_history_formatted,  # ⭐ Array de objetos
-            'news_count': news_count,  # ⭐ Número real
+            'price_history': price_history_formatted,
+            'news_count': news_count,
+            'headlines': headlines[:5],  # ⭐ Noticias reales
             'timestamp': datetime.now().isoformat()
         }
         
