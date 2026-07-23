@@ -1,5 +1,4 @@
-
-# ✅✅ SignalIQ ✅✅
+# SignalIQ
 
 > Where market narratives meet market reality.
 
@@ -13,7 +12,7 @@ When narrative runs ahead of price action, SignalIQ flags it as exhaustion, dist
 
 ---
 
-## 🚀 Live Demo
+## Live Demo
 
 **Production Dashboard:** [https://signaliq-zeta-ten.vercel.app](https://signaliq-zeta-ten.vercel.app)
 
@@ -25,7 +24,17 @@ The dashboard shows real-time signals for major tickers (NVDA, AAPL, MSFT, TSLA)
 
 ---
 
-## ⚡ Quick Start
+## Sample Signal
+
+*(Replace with a real case from your backtesting output — this is what makes the project concrete instead of theoretical. Example format below.)*
+
+> **NVDA — [date]:** NDI reached **[value]**, classified as **Overheating**. Sentiment (news/social) was running well ahead of actual price momentum. **[N] days later**, the stock experienced **[outcome, e.g. a 12% pullback / continued rally / no significant move]**.
+
+Include 1–2 of these. If you have aggregate backtest stats (hit rate, average forward return after a given regime, Sharpe-like metric), put them here too — even modest, honest numbers build more credibility than none at all.
+
+---
+
+## Quick Start
 
 ### 1. Clone the repository
 ```bash
@@ -46,7 +55,7 @@ cd frontend
 npm install
 npm start
 ```
-**Dashboard will open at:** `http://localhost:3001`
+Dashboard opens at `http://localhost:3001`
 
 ### 4. (Optional) Start the backend API
 ```bash
@@ -54,36 +63,17 @@ cd backend
 cp .env.example .env   # edit with your DATABASE_URL
 python app/main.py
 ```
-**API will be available at:** `http://localhost:10000`
+API available at `http://localhost:10000`
 
 ---
 
-## 🚀 Easy Commands (Copy-Paste)
-
-### Start Local Dashboard
-```bash
-cd ~/repo_lab/SignalIQ/frontend && npm start
-```
-
-### Deploy to Vercel (Production)
-```bash
-cd ~/repo_lab/SignalIQ/frontend && CI=false vercel --prod --force
-```
-
-### Verify Production
-```bash
-curl -I https://signaliq-zeta-ten.vercel.app
-```
-
----
-
-## 🔗 Important Links
+## Links
 
 | Resource | Link |
 |----------|------|
-| **Production Dashboard** | [https://signaliq-zeta-ten.vercel.app](https://signaliq-zeta-ten.vercel.app) |
-| **Source Code (GitHub)** | [https://github.com/danacioDS/SignalIQ](https://github.com/danacioDS/SignalIQ) |
-| **Original Documentation** | [https://github.com/danacioDS/SignalIQ/tree/docs](https://github.com/danacioDS/SignalIQ/tree/docs) |
+| Production Dashboard | [https://signaliq-zeta-ten.vercel.app](https://signaliq-zeta-ten.vercel.app) |
+| Source Code (GitHub) | [https://github.com/danacioDS/SignalIQ](https://github.com/danacioDS/SignalIQ) |
+| Original Documentation | [https://github.com/danacioDS/SignalIQ/tree/docs](https://github.com/danacioDS/SignalIQ/tree/docs) |
 
 ---
 
@@ -91,13 +81,13 @@ curl -I https://signaliq-zeta-ten.vercel.app
 
 | Layer | Description | Status | Tests |
 |-------|-------------|--------|-------|
-| **1** | Data ingestion (Yahoo Finance OHLCV + 6 RSS feeds) | Complete | 15 tests, 61 checks |
-| **2** | PostgreSQL persistence (10 tables, 13 functions, 6 triggers) | Complete | 24 SQL validation queries |
-| **3** | NLP intelligence (entity resolution, Loughran-McDonald sentiment, momentum z-scores) | Complete | 16 tests, 100+ checks |
-| **4** | NDI signal generation (measurement, persistence, classification, regimes) | Complete | 15 tests, 80+ checks |
-| **5** | Fundamental analysis (valuation, growth, profitability scoring) | Complete | Smoke test |
-| **AI** | LLM Router (Gemini, GLM, Groq) + Flask REST API | Complete | Mock tests |
-| **6** | React TypeScript frontend + HTML institutional dashboards | Complete | — |
+| 1 | Data ingestion (Yahoo Finance OHLCV + 6 RSS feeds) | Complete | 15 tests, 61 checks |
+| 2 | PostgreSQL persistence (10 tables, 13 functions, 6 triggers) | Complete | 24 SQL validation queries |
+| 3 | NLP intelligence (entity resolution, Loughran-McDonald sentiment, momentum z-scores) | Complete | 16 tests, 100+ checks |
+| 4 | NDI signal generation (measurement, persistence, classification, regimes) | Complete | 15 tests, 80+ checks |
+| 5 | Fundamental analysis (valuation, growth, profitability scoring) | Complete | Smoke test |
+| AI | LLM Router (Gemini, GLM, Groq) + Flask REST API | Complete | Mock tests |
+| 6 | React TypeScript frontend + HTML institutional dashboards | Complete | — |
 
 ---
 
@@ -206,54 +196,19 @@ Markets are driven by stories as much as by numbers. Stories are created, spread
 
 **Daniel Canedo**
 
-- **ML Engineer** at Anyone AI
-- **MSc. Economics** — Yokohama National University
-- **Economist** — Universidad Católica Boliviana
+- ML Engineer at Anyone AI
+- MSc. Economics — Yokohama National University
+- Economist — Universidad Católica Boliviana
 
-This software was designed and built by Daniel Canedo as part of the SignalIQ project.
+Built to combine an economics background with hands-on ML engineering — measuring where market narrative and price action diverge, systematically rather than by gut feel.
+
+[LinkedIn] · [Portfolio] · [Email]
 
 ---
 
 ## License
 
 © 2026 SignalIQ · Intelligence Beyond Narratives
-```
-
----
-
-## 📋 **CÓMO APLICAR ESTE README**
-
-```bash
-cd ~/repo_lab/SignalIQ
-
-# 1. Reemplazar el README actual
-nano README.md
-# (Pegar el contenido de arriba, Ctrl+O, Enter, Ctrl+X)
-
-# 2. Guardar en GitHub
-git add README.md
-git commit -m "docs: add author section with credentials"
-git push origin main
-```
-
----
-
-## ✅ **SECCIÓN DE AUTOR AÑADIDA**
-
-```markdown
-## Author
-
-**Daniel Canedo**
-
-- **ML Engineer** at Anyone AI
-- **MSc. Economics** — Yokohama National University
-- **Economist** — Universidad Católica Boliviana
-
-This software was designed and built by Daniel Canedo as part of the SignalIQ project.
-```
-
----
-cd ~/repo_lab/SignalIQ/frontend
 
 # Reconstruir
 rm -rf build node_modules/.cache
