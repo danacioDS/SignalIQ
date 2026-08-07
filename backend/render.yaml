@@ -11,19 +11,11 @@ services:
       cd backend
       python -m app.main
     envVars:
+      - key: TWELVE_DATA_API_KEY
+        value: ***REMOVED***
+      - key: ALPHA_VANTAGE_API_KEY
+        value: OHKJN60EB6YJYO5L
+      - key: LOG_FORMAT
+        value: text
       - key: PYTHON_VERSION
         value: 3.12.5
-      - key: PORT
-        value: 10000
-      - key: ALPHA_VANTAGE_API_KEY
-        sync: false
-      - key: TWELVE_DATA_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: GROQ_API_KEY
-        sync: false
-      - key: GLM_API_KEY
-        sync: false
-    healthCheckPath: /health
-    autoDeploy: true
