@@ -14,12 +14,7 @@ import yfinance as yf
 import requests
 import numpy as np
 # ⭐ IMPORTAR EL PIPELINE DE NOTICIAS REALES
-# Try relative import first (when imported as module)
-try:
-    from .news_pipeline import process_news_for_ticker
-except ImportError:
-    # Fallback to absolute import (when run as script)
-    from news_pipeline import process_news_for_ticker
+from .news_pipeline import process_news_for_ticker
 
 # ============================================================
 # CONFIGURACIÓN
@@ -87,8 +82,8 @@ def get_price(ticker):
                 price = float(data['Global Quote']['05. price'])
                 set_cached(cache_key, price, 'price')
                 return price
-        except Exception as e:
-                logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
+        except:
+            pass
     
     # 2. Twelve Data
     if TWELVE_DATA_API_KEY:
@@ -100,8 +95,8 @@ def get_price(ticker):
                 price = float(data['price'])
                 set_cached(cache_key, price, 'price')
                 return price
-        except Exception as e:
-                logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
+        except:
+            pass
     
     # 3. Yahoo Finance
     try:
@@ -111,8 +106,8 @@ def get_price(ticker):
             price = float(hist['Close'].iloc[-1])
             set_cached(cache_key, price, 'price')
             return price
-    except Exception as e:
-            logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
+    except:
+        pass
     
     # 4. Fallback
     price = FALLBACK_PRICES.get(ticker, 100.0)
@@ -124,57 +119,57 @@ def get_price(ticker):
 # ============================================================
 
 def get_price_history(ticker, days=30):
-    """
-    Obtiene historial de precios con metadata de calidad.
-    """
-    result = {
-        'history': [],
-        'data_quality': 'REAL',
-        'source': None,
-        'simulated': False,
-        'last_updated': None,
-        'warning': None
-    }
+    cache_key = f'history_{ticker}_{days}'
+    cached = get_cached(cache_key, 'history')
+    if cached is not None:
+        return cached
     
-    # Intentar obtener datos reales
+    history = []
+    
+    # 1. Alpha Vantage
+    if ALPHA_VANTAGE_API_KEY:
+        try:
+            url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&outputsize=compact&apikey={ALPHA_VANTAGE_API_KEY}"
+            response = requests.get(url, timeout=5)
+            data = response.json()
+            if 'Time Series (Daily)' in data:
+                time_series = data['Time Series (Daily)']
+                dates = sorted(time_series.keys())[-days:]
+                history = [float(time_series[d]['4. close']) for d in dates]
+                if history:
+                    set_cached(cache_key, history, 'history')
+                    return history
+        except:
+            pass
+    
+    # 2. Yahoo Finance
     try:
-        ticker_obj = yf.Ticker(ticker)
-        hist = ticker_obj.history(period=f'{days}d')
-        
+        stock = yf.Ticker(ticker)
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        hist = stock.history(start=start_date, end=end_date)
         if not hist.empty:
-            result['history'] = [
-                {'date': idx.strftime('%Y-%m-%d'), 'close': float(row['Close'])}
-                for idx, row in hist.iterrows()
-            ]
-            result['source'] = 'yahoo'
-            result['last_updated'] = datetime.now().isoformat()
-            logger.info(f"Historial real obtenido para {ticker} ({len(result['history'])} días)")
-            return result
-    except Exception as e:
-        logger.warning(f"No se pudo obtener historial real para {ticker}: {str(e)}")
+            history = [float(p) for p in hist['Close'].values]
+            set_cached(cache_key, history, 'history')
+            return history
+    except:
+        pass
     
-    # Generar datos simulados (con etiqueta)
-    current_price = get_current_price(ticker)
-    if current_price is None:
-        current_price = FALLBACK_PRICES.get(ticker, 100.0)
-    
-    # Simulación conservadora
-    result['history'] = []
+    # 3. Historial simulado (SIEMPRE como fallback)
+    logger.warning(f"⚠️ Usando historial simulado para {ticker}")
+    base_price = FALLBACK_PRICES.get(ticker, 100.0)
+    price = base_price * 0.9
+    trend = random.uniform(-0.005, 0.005)
     for i in range(days):
-        price = current_price * (1 + 0.001 * (i - days/2))
-        result['history'].append({
-            'date': (datetime.now() - timedelta(days=days-i)).strftime('%Y-%m-%d'),
-            'close': round(price, 2)
-        })
+        price = price * (1 + trend + random.uniform(-0.03, 0.03))
+        history.append(round(price, 2))
     
-    result['data_quality'] = 'SIMULATED'
-    result['source'] = 'fallback'
-    result['simulated'] = True
-    result['warning'] = '⚠️ Historical prices are simulated - use with caution'
-    result['last_updated'] = datetime.now().isoformat()
-    
-    logger.warning(f"Usando datos simulados para {ticker}")
-    return result
+    set_cached(cache_key, history, 'history')
+    return history
+
+# ============================================================
+# ANÁLISIS NDI - VERSIÓN MEJORADA
+# ============================================================
 
 def classify_regime(ndi):
     if ndi > 2.0:
