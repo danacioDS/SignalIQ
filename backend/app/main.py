@@ -2,6 +2,10 @@
 SignalIQ API - Optimizado con Caché y Mínimo Consumo de APIs
 from dotenv import load_dotenv
 load_dotenv()
+
+# Claves directas para pruebas
+TWELVE_DATA_API_KEY = "f00edbcc6c8e4b9b84d2d260be63c51f"
+ALPHA_VANTAGE_API_KEY = "OHKJN60EB6YJYO5L"
 """
 import os
 import logging
@@ -79,26 +83,15 @@ def set_cached(key, value, cache_type='ticker'):
 # PRECIOS
 # ============================================================
 
+
 def get_price(ticker):
+    """Obtiene precio con prioridad: Twelve Data -> Alpha Vantage -> Yahoo -> Fallback."""
     cache_key = f'price_{ticker}'
     cached = get_cached(cache_key, 'price')
     if cached is not None:
         return cached
     
-    # 1. Alpha Vantage
-    if ALPHA_VANTAGE_API_KEY:
-        try:
-            url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={ALPHA_VANTAGE_API_KEY}"
-            response = requests.get(url, timeout=5)
-            data = response.json()
-            if 'Global Quote' in data and '05. price' in data['Global Quote']:
-                price = float(data['Global Quote']['05. price'])
-                set_cached(cache_key, price, 'price')
-                return price, "alphavantage"
-        except Exception as e:
-                logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
-    
-    # 2. Twelve Data
+    # 1. Twelve Data (PRIORIDAD)
     if TWELVE_DATA_API_KEY:
         try:
             url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={TWELVE_DATA_API_KEY}"
@@ -107,29 +100,41 @@ def get_price(ticker):
             if 'price' in data and data['price'] is not None:
                 price = float(data['price'])
                 set_cached(cache_key, price, 'price')
-                return price, "alphavantage"
+                logger.info(f"💰 Twelve Data: {ticker} = ${price:.2f}")
+                return price
         except Exception as e:
-                logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
+            logger.warning(f"Twelve Data falló: {e}")
     
-    # 3. Yahoo Finance
+    # 2. Alpha Vantage
+    if ALPHA_VANTAGE_API_KEY:
+        try:
+            url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={ALPHA_VANTAGE_API_KEY}"
+            response = requests.get(url, timeout=5)
+            data = response.json()
+            if 'Global Quote' in data and '05. price' in data['Global Quote']:
+                price = float(data['Global Quote']['05. price'])
+                set_cached(cache_key, price, 'price')
+                logger.info(f"💰 Alpha Vantage: {ticker} = ${price:.2f}")
+                return price
+        except Exception as e:
+            logger.warning(f"Alpha Vantage falló: {e}")
+    
+    # 3. Yahoo Finance (fallback)
     try:
         stock = yf.Ticker(ticker)
         hist = stock.history(period="2d")
         if not hist.empty:
             price = float(hist['Close'].iloc[-1])
             set_cached(cache_key, price, 'price')
-            return price, "alphavantage"
+            logger.info(f"💰 Yahoo Finance: {ticker} = ${price:.2f}")
+            return price
     except Exception as e:
-            logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
+        logger.warning(f"Yahoo Finance falló: {e}")
     
-    # 4. Fallback
-    price = FALLBACK_PRICES.get(ticker, 100.0)
-    set_cached(cache_key, price, 'price')
-    return price, "alphavantage"
+    # 4. Fallback final (NO simular)
+    logger.error(f"❌ No hay precio disponible para {ticker}")
+    return FALLBACK_PRICES.get(ticker, 100.0)
 
-# ============================================================
-# HISTORIAL
-# ============================================================
 
 def get_price_history(ticker, days=30):
     """
