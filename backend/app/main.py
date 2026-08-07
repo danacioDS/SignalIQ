@@ -92,7 +92,7 @@ def get_price(ticker):
             if 'Global Quote' in data and '05. price' in data['Global Quote']:
                 price = float(data['Global Quote']['05. price'])
                 set_cached(cache_key, price, 'price')
-                return price
+                return price, "alphavantage"
         except Exception as e:
                 logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
     
@@ -105,7 +105,7 @@ def get_price(ticker):
             if 'price' in data and data['price'] is not None:
                 price = float(data['price'])
                 set_cached(cache_key, price, 'price')
-                return price
+                return price, "alphavantage"
         except Exception as e:
                 logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
     
@@ -116,14 +116,14 @@ def get_price(ticker):
         if not hist.empty:
             price = float(hist['Close'].iloc[-1])
             set_cached(cache_key, price, 'price')
-            return price
+            return price, "alphavantage"
     except Exception as e:
             logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
     
     # 4. Fallback
     price = FALLBACK_PRICES.get(ticker, 100.0)
     set_cached(cache_key, price, 'price')
-    return price
+    return price, "alphavantage"
 
 # ============================================================
 # HISTORIAL
@@ -208,7 +208,7 @@ def calculate_ndi(ticker):
         return cached
     
     try:
-        price = get_price(ticker)
+        price, _ = get_price(ticker)
         history = get_price_history(ticker, days=30)
         
         # ⭐ NOTICIAS REALES DEL PIPELINE
