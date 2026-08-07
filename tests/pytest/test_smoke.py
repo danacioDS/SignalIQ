@@ -1,36 +1,37 @@
-"""
-SMOKE TESTS - Single source of truth for CI.
-Legacy tests (test_layer1_integration.py, test_layer3.py, test_layer4.py)
-are DEPRECATED but preserved for reference.
-"""
+"""Smoke tests for SignalIQ - verify imports work."""
 
-import pytest
-import os
 import sys
+import os
+import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../backend'))
+# Add backend/app to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../backend/app'))
 
-@pytest.mark.smoke
 def test_import_layer4():
-    from layers.layer4_orchestrator import process_asset, OUTPUT_FIELDS
-    assert OUTPUT_FIELDS is not None
-    assert callable(process_asset)
+    """Test that Layer 4 orchestrator can be imported."""
+    from layers.layer4_orchestrator import Layer4Orchestrator
+    assert Layer4Orchestrator is not None
 
-@pytest.mark.smoke
 def test_import_config():
-    from layers.system_config import config
-    assert hasattr(config, 'DATA_DIR')
-    assert hasattr(config, 'db_url')
-    assert hasattr(config, 'db')
+    """Test that thresholds can be imported."""
+    from config.thresholds import NDI_OVERHEATING
+    assert NDI_OVERHEATING == 1.5
 
-@pytest.mark.smoke
-def test_import_layer1():
-    from ingestion.collect_prices import fetch_asset_price, normalize_price_response
-    assert callable(fetch_asset_price)
-    assert callable(normalize_price_response)
+def test_import_news_pipeline():
+    """Test that news_pipeline can be imported."""
+    # Try relative import first (when imported as module)
+    try:
+        from app.news_pipeline import process_news_for_ticker
+    except ImportError:
+        # Fallback to absolute import
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../backend/app'))
+        from news_pipeline import process_news_for_ticker
+    assert callable(process_news_for_ticker)
 
-@pytest.mark.smoke
 def test_api_import():
-    from backend.app.main import app
-    assert app is not None
+    """Test that the production API can be imported."""
+    # Add backend to path
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../backend'))
+    from app import main
+    assert hasattr(main, 'app')
+    assert hasattr(main, 'get_ticker_data')
