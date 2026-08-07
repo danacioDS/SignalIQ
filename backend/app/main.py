@@ -1,5 +1,7 @@
 """
 SignalIQ API - Optimizado con Caché y Mínimo Consumo de APIs
+from dotenv import load_dotenv
+load_dotenv()
 """
 import os
 import logging
