@@ -8,8 +8,10 @@ import random
 from datetime import datetime, timedelta
 from threading import Lock
 
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -23,9 +25,6 @@ try:
 except ImportError:
     # Fallback to absolute import (when run as script)
     from news_pipeline import process_news_for_ticker
-
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 
 # ============================================================
 # CONFIGURACIÓN
@@ -77,26 +76,14 @@ def set_cached(key, value, cache_type='ticker'):
 # PRECIOS
 # ============================================================
 
+
 def get_price(ticker):
     cache_key = f'price_{ticker}'
     cached = get_cached(cache_key, 'price')
     if cached is not None:
-        return cached, 'cache'  # Cache hit returns tuple
+        return cached, 'cache'
     
-    # 1. Alpha Vantage
-    if ALPHA_VANTAGE_API_KEY:
-        try:
-            url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={ALPHA_VANTAGE_API_KEY}"
-            response = requests.get(url, timeout=5)
-            data = response.json()
-            if 'Global Quote' in data and '05. price' in data['Global Quote']:
-                price = float(data['Global Quote']['05. price'])
-                set_cached(cache_key, price, 'price')
-                return price, "alphavantage"
-        except Exception as e:
-                logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
-    
-    # 2. Twelve Data
+    # 1. Twelve Data (requiere API key - PRIORIDAD)
     if TWELVE_DATA_API_KEY:
         try:
             url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={TWELVE_DATA_API_KEY}"
@@ -105,39 +92,41 @@ def get_price(ticker):
             if 'price' in data and data['price'] is not None:
                 price = float(data['price'])
                 set_cached(cache_key, price, 'price')
-                return price, "alphavantage"
+                logger.info(f"💰 Precio de Twelve Data: {ticker} = ${price:.2f}")
+                return price, 'twelvedata'
         except Exception as e:
-                logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
+            logger.warning(f"Twelve Data falló para {ticker}: {str(e)}")
     
-    # 3. Yahoo Finance
+    # 2. Alpha Vantage (requiere API key)
+    if ALPHA_VANTAGE_API_KEY:
+        try:
+            url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={ALPHA_VANTAGE_API_KEY}"
+            response = requests.get(url, timeout=5)
+            data = response.json()
+            if 'Global Quote' in data and '05. price' in data['Global Quote']:
+                price = float(data['Global Quote']['05. price'])
+                set_cached(cache_key, price, 'price')
+                logger.info(f"💰 Precio de Alpha Vantage: {ticker} = ${price:.2f}")
+                return price, 'alphavantage'
+        except Exception as e:
+            logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}")
+    
+    # 3. Yahoo Finance (fallback, no requiere API key)
     try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period="2d")
+        ticker_obj = yf.Ticker(ticker)
+        hist = ticker_obj.history(period="1d")
         if not hist.empty:
             price = float(hist['Close'].iloc[-1])
             set_cached(cache_key, price, 'price')
-            return price, "alphavantage"
+            logger.info(f"💰 Precio de Yahoo Finance: {ticker} = ${price:.2f}")
+            return price, 'yahoo'
     except Exception as e:
-            logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
+        logger.warning(f"Yahoo Finance falló para {ticker}: {str(e)}")
     
-    # 4. Fallback
-    price = FALLBACK_PRICES.get(ticker, 100.0)
-    set_cached(cache_key, price, 'price')
-    return price, "alphavantage"
+    # 4. Sin datos disponibles - NO SIMULAR
+    logger.error(f"❌ No se pudo obtener precio para {ticker} de NINGUNA fuente")
+    return None, 'unavailable'
 
-def get_current_price(ticker):
-    """Get current price using get_price, return float only."""
-    try:
-        price, _ = get_price(ticker)
-        return price
-    except Exception as e:
-        logger.warning(f"Could not get current price for {ticker}: {str(e)}")
-        return FALLBACK_PRICES.get(ticker, 100.0)
-
-
-# ============================================================
-# HISTORIAL
-# ============================================================
 
 def get_price_history(ticker, days=30):
     """
@@ -192,41 +181,6 @@ def get_price_history(ticker, days=30):
     logger.warning(f"Usando datos simulados para {ticker}")
     return result
 
-def get_ticker_data(ticker):
-    """
-    Get comprehensive ticker data for API endpoints.
-    """
-    try:
-        # Get price
-        price, source = get_price(ticker)
-        
-        # Get price history
-        history_data = get_price_history(ticker, days=30)
-        
-        # Get news sentiment
-        news_data = process_news_for_ticker(ticker)
-        
-        # Calculate NDI
-        ndi = calculate_ndi(ticker, news_data, history_data)
-        
-        return {
-            'ticker': ticker,
-            'current_price': price,
-            'price_source': source,
-            'price_history': history_data.get('history', []),
-            'data_quality': history_data.get('data_quality', 'UNKNOWN'),
-            'sentiment': news_data.get('sentiment', 0.0),
-            'news_count': news_data.get('count', 0),
-            'headlines': news_data.get('headlines', []),
-            'ndi': ndi,
-            'regime': classify_regime(ndi),
-            'confidence': calculate_confidence(ndi)
-        }
-    except Exception as e:
-        logger.error(f"Error getting ticker data for {ticker}: {str(e)}", exc_info=True)
-        return None
-
-
 def classify_regime(ndi):
     if ndi > 2.0:
         return {'regime': 'EXTREME OVERHEATING', 'color': 'red', 'label': 'SELL'}
@@ -247,114 +201,108 @@ def classify_regime(ndi):
 # Calcular NDI y Regímenes
 # ============================================================
 
-def calculate_ndi(ticker, news_data=None, history_data=None):
+
+def calculate_ndi(ticker):
     """
-    Calculate NDI for a ticker using sentiment and momentum.
+    Calcula NDI usando Twelve Data o Alpha Vantage.
     """
     try:
-        # Get news sentiment
-        if news_data is None:
-            news_data = process_news_for_ticker(ticker)
+        # Obtener precio actual
+        price = get_current_price(ticker)
+        if not price:
+            logger.warning(f"No hay precio disponible para {ticker}")
+            return 0.0
         
-        # Get price history
-        if history_data is None:
-            history_data = get_price_history(ticker, days=30)
+        # Obtener historial
+        history_data = get_price_history(ticker, days=30)
         
-        # Extract history list from dict
-        history = history_data.get('history', []) if isinstance(history_data, dict) else history_data
+        # Extraer lista de precios
+        if isinstance(history_data, dict):
+            history = history_data.get('history', [])
+        else:
+            history = history_data if isinstance(history_data, list) else []
         
         if not history or len(history) < 10:
-            logger.warning(f"Not enough history for {ticker}: {len(history) if history else 0}")
+            logger.warning(f"Historial insuficiente para {ticker}")
             return 0.0
         
-        # Calculate momentum (10-day return)
-        current_price = history[-1]['close'] if isinstance(history[-1], dict) else history[-1]
-        price_10d_ago = history[-10]['close'] if isinstance(history[-10], dict) else history[-10]
+        # Calcular momentum
+        try:
+            close_prices = []
+            for h in history:
+                if isinstance(h, dict) and 'close' in h:
+                    close_prices.append(float(h['close']))
+                elif isinstance(h, (int, float)):
+                    close_prices.append(float(h))
+            
+            if len(close_prices) < 10:
+                return 0.0
+            
+            current_price = close_prices[-1]
+            price_10d_ago = close_prices[-10]
+            
+            if price_10d_ago == 0:
+                return 0.0
+            
+            momentum = (current_price - price_10d_ago) / price_10d_ago
+        except Exception as e:
+            logger.warning(f"Error calculando momentum: {str(e)}")
+            momentum = 0.0
         
-        if price_10d_ago == 0:
-            return 0.0
+        # Obtener sentimiento de noticias
+        try:
+            news_data = process_news_for_ticker(ticker)
+            sentiment = news_data.get('sentiment', 0.0)
+            news_count = news_data.get('count', 0)
+            
+            if news_count == 0:
+                sentiment = max(-1, min(1, momentum * 8))
+                logger.info(f"📊 Sin noticias, sentimiento simulado: {sentiment:.3f}")
+        except Exception as e:
+            logger.warning(f"Error obteniendo sentimiento: {str(e)}")
+            sentiment = 0.0
         
-        momentum = (current_price - price_10d_ago) / price_10d_ago
-        
-        # Get sentiment
-        sentiment = news_data.get('sentiment', 0.0) if isinstance(news_data, dict) else 0.0
-        
-        # Calculate NDI with scaling
+        # Calcular NDI
         ndi_raw = sentiment - momentum
         ndi_scaled = ndi_raw * 3.0
-        ndi_clamped = max(-3.0, min(3.0, ndi_scaled))
+        ndi = max(-3.0, min(3.0, ndi_scaled))
         
-        logger.info(f"NDI for {ticker}: sentiment={sentiment:.3f}, momentum={momentum:.3f}, ndi={ndi_clamped:.3f}")
-        return ndi_clamped
+        logger.info(f"📊 NDI {ticker}: sentiment={sentiment:.3f}, momentum={momentum:.3f}, ndi={ndi:.3f}")
+        return ndi
         
     except Exception as e:
         logger.error(f"Error calculando NDI para {ticker}: {str(e)}", exc_info=True)
         return 0.0
 
 
-def require_api_key(f):
-    """Decorator to optionally require API key."""
-    from functools import wraps
-    
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        # Si no hay API_KEY configurada, permitir todo
-        if not API_KEY:
-            return f(*args, **kwargs)
-        
-        # Verificar API key en header
-        api_key = request.headers.get('X-API-Key')
-        if api_key != API_KEY:
-            return jsonify({'error': 'Invalid or missing API key'}), 401
-        return f(*args, **kwargs)
-    return decorated
 
-# Aplicar a endpoints (opcional - descomentar para activar)
-# @app.route('/api/ticker/<ticker>')
-# @require_api_key
-# @limiter.limit("10 per minute")
+def get_current_price(ticker):
+    """
+    Obtiene el precio actual para un ticker.
+    Retorna float o None si no está disponible.
+    """
+    try:
+        # Primero intentar con Twelve Data o Alpha Vantage
+        price, _ = get_price(ticker)
+        if price:
+            return float(price)
+    except Exception as e:
+        logger.warning(f"Error obteniendo precio actual para {ticker}: {str(e)}")
+    
+    # Si todo falla, retornar None (no fallback simulado)
+    logger.warning(f"No se pudo obtener precio actual para {ticker}")
+    return None
 
-@app.route('/api/prices', methods=['GET'])
-def get_all_prices():
-    """Return current prices for all tracked tickers."""
-    tickers = ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META', 'AMD', 'AMZN', 'JPM', 'KO']
-    result = {}
-    
-    for ticker in tickers:
-        try:
-            price, source = get_price(ticker)
-            if price:
-                result[ticker] = {
-                    'price': float(price),
-                    'source': source,
-                    'timestamp': datetime.now().isoformat()
-                }
-        except Exception as e:
-            logger.warning(f"Error getting price for {ticker}: {str(e)}")
-            result[ticker] = {'error': str(e)}
-    
-    return jsonify(result)
-
-@app.route('/api/signals-intel', methods=['GET'])
-def get_signals_intel():
-    """Return comprehensive signals for frontend."""
-    ticker = request.args.get('ticker')
-    
-    if ticker:
-        data = get_ticker_data(ticker)
-        if data:
-            return jsonify(data)
-        return jsonify({'error': f'Ticker {ticker} not found'}), 404
-    
-    tickers = ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META', 'AMD', 'AMZN', 'JPM', 'KO']
-    results = {}
-    for t in tickers:
-        try:
-            data = get_ticker_data(t)
-            if data:
-                results[t] = data
-        except Exception as e:
-            logger.warning(f"Error getting signals for {t}: {str(e)}")
-            results[t] = {'error': str(e)}
-    
-    return jsonify(results)
+def get_current_price(ticker):
+    """
+    Obtiene el precio actual para un ticker usando get_price.
+    Retorna float o None si no está disponible.
+    """
+    try:
+        price = get_price(ticker)
+        if price and isinstance(price, (int, float)):
+            return float(price)
+        return None
+    except Exception as e:
+        logger.warning(f"Error obteniendo precio actual para {ticker}: {str(e)}")
+        return None
