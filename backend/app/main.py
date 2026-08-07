@@ -84,6 +84,7 @@ def set_cached(key, value, cache_type='ticker'):
 # ============================================================
 
 
+
 def get_price(ticker):
     """Obtiene precio con prioridad: Twelve Data -> Alpha Vantage -> Yahoo -> Fallback."""
     cache_key = f'price_{ticker}'
@@ -91,19 +92,19 @@ def get_price(ticker):
     if cached is not None:
         return cached
     
-    # 1. Twelve Data (PRIORIDAD)
-    if TWELVE_DATA_API_KEY:
-        try:
-            url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={TWELVE_DATA_API_KEY}"
-            response = requests.get(url, timeout=5)
+    # 1. Twelve Data (PRIORIDAD ABSOLUTA)
+    try:
+        url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={TWELVE_DATA_API_KEY}"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
             data = response.json()
             if 'price' in data and data['price'] is not None:
                 price = float(data['price'])
                 set_cached(cache_key, price, 'price')
                 logger.info(f"💰 Twelve Data: {ticker} = ${price:.2f}")
                 return price
-        except Exception as e:
-            logger.warning(f"Twelve Data falló: {e}")
+    except Exception as e:
+        logger.warning(f"Twelve Data falló: {e}")
     
     # 2. Alpha Vantage
     if ALPHA_VANTAGE_API_KEY:
@@ -131,9 +132,10 @@ def get_price(ticker):
     except Exception as e:
         logger.warning(f"Yahoo Finance falló: {e}")
     
-    # 4. Fallback final (NO simular)
+    # 4. Fallback final
     logger.error(f"❌ No hay precio disponible para {ticker}")
     return FALLBACK_PRICES.get(ticker, 100.0)
+
 
 
 def get_price_history(ticker, days=30):
