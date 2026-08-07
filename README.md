@@ -172,7 +172,7 @@ pytest tests/pytest/ -m integration -v
 - **Deployment:** Automatic from `main` branch
 
 ### Backend (Render)
-- **API URL:** `https://signaliq-l8mi.onrender.com`
+- **API URL:** `https://signaliq-api.onrender.com`
 - **Deployment:** Automatic from `main` branch
 
 ---

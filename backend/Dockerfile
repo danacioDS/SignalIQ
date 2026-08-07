@@ -1,33 +1,26 @@
-# Usar Python 3.11 slim para imagen ligera
-FROM python:3.11-slim
+FROM python:3.12-slim
 
-# Configurar variables de entorno
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PORT=10000
-
-# Establecer directorio de trabajo
-WORKDIR /app
-
-# Instalar dependencias del sistema necesarias
+# Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar e instalar dependencias de Python
-COPY requirements.txt .
+# Establecer directorio de trabajo
+WORKDIR /app
+
+# Copiar requirements primero (para cache)
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar el código de la aplicación
-COPY . .
+# Copiar el código
+COPY backend/ .
 
-# Crear directorios necesarios
-RUN mkdir -p /app/cache /app/logs
+# Crear __init__.py si no existe
+RUN touch app/__init__.py
 
-# Exponer el puerto
-EXPOSE ${PORT}
+# Exponer puerto
+EXPOSE 10000
 
-# Comando de inicio: usar Gunicorn para producción
-CMD ["gunicorn", "app.main:app", "--bind", "0.0.0.0:${PORT}", "--workers", "2", "--timeout", "30"]
+# Comando para correr la API
+# Usamos python -m app.main para que funcione el import relativo
+CMD ["python", "-m", "app.main"]

@@ -4,7 +4,7 @@ module.exports = function(app) {
   app.use(
     '/api',
     createProxyMiddleware({
-      target: 'https://signaliq-l8mi.onrender.com',
+      target: 'https://signaliq-api.onrender.com',
       changeOrigin: true,
       secure: false,
       logLevel: 'debug'

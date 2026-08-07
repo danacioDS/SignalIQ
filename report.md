@@ -76,7 +76,7 @@ Two paths remain, plus a new two-branch release flow:
 |----------|--------|
 | `https://signaliq-zeta-ten.vercel.app` (frontend) | 200 OK |
 | `https://signaliq-api.onrender.com/health` (API) | 200 OK — v6.2, mode `alpha_vantage_twelve_yahoo` |
-| `https://signaliq-l8mi.onrender.com/health` | **404** — stale URL still referenced in `.env.development`, `setupProxy.js`, `render.yaml` CORS, and the previous report |
+| `https://signaliq-api.onrender.com/health` | **404** — stale URL still referenced in `.env.development`, `setupProxy.js`, `render.yaml` CORS, and the previous report |
 
 ### 2.4 Tech Stack
 
@@ -165,7 +165,7 @@ Two paths remain, plus a new two-branch release flow:
 - **Price cascade:** Alpha Vantage → Twelve Data → Yahoo Finance → `FALLBACK_PRICES`
 - **NDI:** `(sentiment - momentum) * 3`, clamped to [-3.0, 3.0]; sentiment simulated from price change + volatility when no news
 - **Caching:** thread-safe dict, TTL price=300s / history=600s / ticker=300s / signals=60s
-- **CORS:** 6 origins (includes the now-404 `signaliq-l8mi.onrender.com`)
+- **CORS:** 6 origins (includes the now-404 `signaliq-api.onrender.com`)
 - **No auth, no rate limiting** (flask-limiter pinned but never applied), `logging.info` used for key events, `news_pipeline.py` still uses `print()` on lines 44 and 84.
 - **Import fragility:** `from news_pipeline import process_news_for_ticker` is an absolute import. It only works when the process cwd or sys.path includes `backend/app` (e.g. `cd backend/app && python main.py`). The Docker `CMD` (`gunicorn app.main:app`) and `render.yaml` `startCommand` both fail on a fresh checkout — verified by import test. Local dev via `start.sh` works because running a script adds its directory to `sys.path`.
 
@@ -248,8 +248,8 @@ Integration tests (`test_db_contract.py`, `test_integration.py`, 5 tests) requir
 |-------|---------|
 | **Triplicate NDI formula** | (1) core L4 `sentiment_zscore - momentum_zscore`, (2) production API `(sentiment - momentum) × 3` clamped [-3, 3], (3) frontend `useSignalAnalysis` confidence logic. Different values per layer. |
 | **7 regimes (API/frontend) vs 4 regimes (core L4)** | Different thresholds and semantics. |
-| **Two API hostnames in circulation** | `signaliq-api.onrender.com` (live) vs `signaliq-l8mi.onrender.com` (404). Live frontend uses the correct one, but dev config, setupProxy, CORS list, and docs reference the dead one. |
-| **`signaliq-l8mi.onrender.com` in CORS + dev config** | Dead origin; harmless but misleading. |
+| **Two API hostnames in circulation** | `signaliq-api.onrender.com` (live) vs `signaliq-api.onrender.com` (404). Live frontend uses the correct one, but dev config, setupProxy, CORS list, and docs reference the dead one. |
+| **`signaliq-api.onrender.com` in CORS + dev config** | Dead origin; harmless but misleading. |
 | **No authentication, no rate limiting** | All endpoints public; flask-limiter pinned but never wired. |
 | **No CI/CD** | No GitHub Actions; the failing suite is never caught automatically. |
 | **`print()` in production path** | `news_pipeline.py` lines 44, 84. |
@@ -302,7 +302,7 @@ Integration tests (`test_db_contract.py`, `test_integration.py`, 5 tests) requir
 
 ### Short-Term (quality)
 6. **Reconcile frontend API calls with backend routes** — add `/api/prices` and `/api/signals-intel` to the API or remove the frontend usage.
-7. **Consolidate the API base URL** to a single `REACT_APP_API_URL`; drop `signaliq-l8mi.onrender.com` from dev config, setupProxy, and CORS.
+7. **Consolidate the API base URL** to a single `REACT_APP_API_URL`; drop `signaliq-api.onrender.com` from dev config, setupProxy, and CORS.
 8. **Fix the frontend test** — pin a compatible React Router version or upgrade Jest/config.
 9. **Add GitHub Actions CI** running the (fixed) pytest suite + `npm run build`.
 10. **Replace `print()` with logging** in `news_pipeline.py`.
@@ -347,7 +347,7 @@ Integration tests (`test_db_contract.py`, `test_integration.py`, 5 tests) requir
 | NDI scale factor | 3.0 (stable since Jul 10) |
 | Live API version | 6.2 |
 | Live frontend / API URLs | `signaliq-zeta-ten.vercel.app` / `signaliq-api.onrender.com` (both 200) |
-| Dead URL still referenced | `signaliq-l8mi.onrender.com` (404) |
+| Dead URL still referenced | `signaliq-api.onrender.com` (404) |
 
 ---
 

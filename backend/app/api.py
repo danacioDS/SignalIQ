@@ -24,7 +24,7 @@ CORS(app, origins=[
     "http://127.0.0.1:3000",
     "https://signaliq-zeta-ten.vercel.app",
     "https://signaliq-zeta.vercel.app",
-    "https://signaliq-l8mi.onrender.com"
+    "https://signaliq-api.onrender.com"
 ])
 
 logging.basicConfig(level=logging.INFO)

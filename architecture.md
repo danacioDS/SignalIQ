@@ -188,7 +188,7 @@ repo root/
 │   ├── package.json                        # React 19.2, Recharts 3.8, Axios, React Router 7, CRA 5
 │   ├── tsconfig.json
 │   ├── .env.production                     # API URL: signaliq-api.onrender.com
-│   ├── .env.development                    # ⚠️ API URL: signaliq-l8mi.onrender.com (returns 404)
+│   ├── .env.development                    # ⚠️ API URL: signaliq-api.onrender.com (returns 404)
 │   ├── public/
 │   └── src/
 │       ├── App.tsx                         # Shell with top nav + routes
@@ -221,7 +221,7 @@ repo root/
 │       ├── utils/
 │       │   ├── regimeHelpers.ts            # Regime classification helpers
 │       │   └── velocimeterUtils.ts         # Velocimeter SVG utilities
-│       ├── setupProxy.js                   # ⚠️ proxies /api → signaliq-l8mi.onrender.com (404)
+│       ├── setupProxy.js                   # ⚠️ proxies /api → signaliq-api.onrender.com (404)
 │       └── pages/
 │           ├── Dashboard.tsx               # Main signals dashboard (API base hardcoded)
 │           ├── Dashboard.tsx.backup_final  # ⚠️ tracked backup
@@ -433,7 +433,7 @@ This differs from the core L4 formula (`sentiment_zscore - momentum_zscore` usin
 
 **Caching:** thread-safe dict cache (`threading.Lock`); TTL per type: price=300s, history=600s, ticker=300s, signals=60s. Keys: `price_{ticker}`, `history_{ticker}_{days}`, `ticker_{ticker}`.
 
-**CORS:** 6 explicitly allowed origins (includes the retired `signaliq-l8mi.onrender.com`).
+**CORS:** 6 explicitly allowed origins (includes the retired `signaliq-api.onrender.com`).
 
 **No rate limiting.** flask-limiter is pinned in requirements but never applied.
 
@@ -518,7 +518,7 @@ def process_news_for_ticker(ticker):
 
 **Styling:** Shared `C` object from `styles.ts` — dark theme, inline styles. Tailwind installed but unused.
 
-**Data fetching:** Axios to hardcoded `signaliq-api.onrender.com` in 5 source files — `REACT_APP_API_URL` is effectively ignored. 5-minute polling with static fallback. `setupProxy.js` points at the retired `signaliq-l8mi.onrender.com`.
+**Data fetching:** Axios to hardcoded `signaliq-api.onrender.com` in 5 source files — `REACT_APP_API_URL` is effectively ignored. 5-minute polling with static fallback. `setupProxy.js` points at the retired `signaliq-api.onrender.com`.
 
 **Standalone HTML dashboards** in `web/`: `index.html`, `automatico.html`, `test.html`.
 
@@ -609,7 +609,7 @@ pytest tests/pytest/ -v
 |---------|----------|-----|--------|
 | Frontend | Vercel | https://signaliq-zeta-ten.vercel.app | 200 OK |
 | Backend | Render | https://signaliq-api.onrender.com | 200 OK (v6.2) |
-| ~~Backend (legacy)~~ | Render | https://signaliq-l8mi.onrender.com | **404** — still referenced in dev config + docs |
+| ~~Backend (legacy)~~ | Render | https://signaliq-api.onrender.com | **404** — still referenced in dev config + docs |
 
 ### Docker
 
@@ -683,7 +683,7 @@ python -m ingestion.orchestrator --type prices --dry-run
 - **Entrypoint fragility**: `gunicorn app.main:app` (Docker + render.yaml) fails; only `cd backend/app && python main.py` works
 - **Stale root `main.py`** references removed modules; **`docker-compose.yml`** references missing `worker.py`
 - **Frontend calls missing endpoints** (`/api/prices`, `/api/signals-intel`)
-- **Two API hostnames**: `signaliq-api.onrender.com` (live) vs `signaliq-l8mi.onrender.com` (404) in dev config + docs
+- **Two API hostnames**: `signaliq-api.onrender.com` (live) vs `signaliq-api.onrender.com` (404) in dev config + docs
 - Triplicate NDI formula (core L4 / API / frontend)
 - 7 regimes (API + frontend) vs 4 regimes (core L4)
 - No authentication; no rate limiting (despite pinned flask-limiter)
@@ -779,6 +779,27 @@ docker-compose up   # ⚠️ references missing worker.py
 - `load_dotenv()` guarded by `ENVIRONMENT != 'test'`
 - Layer 1 installs no cron jobs automatically — run `scripts/install_crontab.sh`
 - Fundamental engine requires `numpy`; all other layers stdlib-only
-- Frontend hardcodes `signaliq-api.onrender.com` in 5 source files; `.env.development` + `setupProxy.js` point at the retired `signaliq-l8mi.onrender.com` (404)
+- Frontend hardcodes `signaliq-api.onrender.com` in 5 source files; `.env.development` + `setupProxy.js` point at the retired `signaliq-api.onrender.com` (404)
 - Live production: frontend `signaliq-zeta-ten.vercel.app`, API `signaliq-api.onrender.com` (both verified 200)
 - News pipeline uses TextBlob (not Loughran-McDonald) for live API sentiment
+
+## Estado Actualizado (Agosto 2026)
+
+### ✅ Día 1 Completado - Estabilización
+- Archivos stale eliminados
+- Imports arreglados (soportan relativo y absoluto)
+- Logging estructurado implementado
+- Datos simulados etiquetados
+- README limpiado
+
+### ✅ Día 2 - Entrypoints y Configuración
+- Dockerfile actualizado (usa python -m app.main)
+- render.yaml actualizado
+- Hostname unificado: signaliq-api.onrender.com
+- Variables de entorno documentadas
+
+### 🚀 Próximo: Día 3 - Tests
+- Arreglar tests de smoke
+- Arreglar tests de arquitectura
+- Configurar GitHub Actions CI
+

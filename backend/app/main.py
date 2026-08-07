@@ -330,7 +330,7 @@ CORS(app, origins=[
     "https://signaliq-zeta-ten.vercel.app",
     "https://signaliq-zeta.vercel.app",
     "https://signaliq-api.onrender.com",
-    "https://signaliq-l8mi.onrender.com"
+    "https://signaliq-api.onrender.com"
 ])
 
 @app.route('/health')
