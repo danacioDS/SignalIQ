@@ -11,3 +11,5 @@ python-dotenv==1.0.0
 redis==5.0.1
 # Agregar para mejor logging
 python-json-logger==2.0.7
+# NLP - para news_pipeline
+textblob==0.17.1
