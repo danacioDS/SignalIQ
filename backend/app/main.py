@@ -403,3 +403,66 @@ if __name__ == '__main__':
     logger.info(f"📊 Twelve Data: {'✅' if TWELVE_DATA_API_KEY else '❌'}")
     logger.info("=" * 50)
     app.run(host='0.0.0.0', port=port, debug=False)
+@app.route('/api/prices', methods=['GET'])
+def get_all_prices():
+    """
+    Return current prices for all tracked tickers.
+    Used by frontend yahoo-finance-service.ts
+    """
+    tickers = ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META', 'AMD', 'AMZN', 'JPM', 'KO']
+    result = {}
+    
+    for ticker in tickers:
+        try:
+            price, source = get_price(ticker)
+            if price:
+                result[ticker] = {
+                    'price': float(price),
+                    'source': source,
+                    'timestamp': datetime.now().isoformat()
+                }
+            else:
+                result[ticker] = {
+                    'price': None,
+                    'source': 'none',
+                    'error': 'No price available'
+                }
+        except Exception as e:
+            logger.warning(f"Error getting price for {ticker}: {str(e)}")
+            result[ticker] = {
+                'price': None,
+                'source': 'error',
+                'error': str(e)
+            }
+    
+    return jsonify(result)
+
+@app.route('/api/signals-intel', methods=['GET'])
+def get_signals_intel():
+    """
+    Return comprehensive signals for frontend.
+    Used by ExpandedRow.tsx
+    """
+    ticker = request.args.get('ticker')
+    
+    if ticker:
+        # Single ticker
+        data = get_ticker_data(ticker)
+        if data:
+            return jsonify(data)
+        return jsonify({'error': f'Ticker {ticker} not found'}), 404
+    
+    # All tickers
+    tickers = ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META', 'AMD', 'AMZN', 'JPM', 'KO']
+    results = {}
+    
+    for t in tickers:
+        try:
+            data = get_ticker_data(t)
+            if data:
+                results[t] = data
+        except Exception as e:
+            logger.warning(f"Error getting signals for {t}: {str(e)}")
+            results[t] = {'error': str(e)}
+    
+    return jsonify(results)

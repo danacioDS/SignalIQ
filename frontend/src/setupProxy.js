@@ -6,8 +6,11 @@ module.exports = function(app) {
     createProxyMiddleware({
       target: 'https://signaliq-api.onrender.com',
       changeOrigin: true,
-      secure: false,
-      logLevel: 'debug'
+      secure: true,
+      logLevel: 'debug',
+      onError: (err, req, res) => {
+        console.error('Proxy error:', err);
+      },
     })
   );
 };

@@ -1,3 +1,4 @@
+import { API_ENDPOINTS } from '../config/api';
 /**
  * Servicio para obtener datos de Yahoo Finance desde el frontend
  * El navegador del usuario NO está bloqueado por Yahoo Finance
@@ -34,7 +35,7 @@ const FALLBACK_DATA: Record<string, PriceData> = {
 /*** */
 export const getPriceFromYahoo = async (ticker: string): Promise<PriceData | null> => {
   try {
-    const url = `https://signaliq-api.onrender.com/api/prices/${ticker}`;
+    const url = `API_ENDPOINTS.prices/${ticker}`;
     
     const response = await fetch(url, {
       headers: {

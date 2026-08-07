@@ -15,7 +15,7 @@ import {
 import { useSignalAnalysis } from '../hooks/useSignalAnalysis';
 
 // ==================== CONFIGURACIÓN ====================
-const API_BASE = 'https://signaliq-api.onrender.com';
+import { API_BASE, API_ENDPOINTS, DEFAULT_TICKERS } from '../config/api';
 const REFRESH_INTERVAL = 5 * 60 * 1000;
 
 // ✅ Headers para autenticación
