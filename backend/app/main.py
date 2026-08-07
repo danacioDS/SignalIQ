@@ -239,62 +239,6 @@ def classify_regime(ndi):
 
 
 
-def calculate_ndi(ticker):
-    """
-    Calcula NDI simple y robusto.
-    """
-    try:
-        # Obtener precio (get_price retorna float)
-        price = get_price(ticker)
-        if not price:
-            logger.warning(f"No hay precio para {ticker}")
-            return 0.0
-        
-        # Obtener historial
-        history_data = get_price_history(ticker, days=30)
-        
-        # Extraer lista de precios
-        if isinstance(history_data, dict):
-            history = history_data.get('history', [])
-        else:
-            history = history_data if isinstance(history_data, list) else []
-        
-        # Sentimiento de noticias
-        try:
-            news_data = process_news_for_ticker(ticker)
-            sentiment = news_data.get('sentiment', 0.0)
-            news_count = news_data.get('count', 0)
-        except Exception as e:
-            logger.warning(f"Error en noticias: {e}")
-            sentiment = 0.0
-            news_count = 0
-        
-        # Si no hay noticias, sentimiento simulado
-        if news_count == 0 and len(history) >= 5:
-            change_5d = (history[-1] - history[-5]) / history[-5] if history[-5] != 0 else 0
-            sentiment = max(-1, min(1, change_5d * 5))
-            logger.info(f"📊 Sentimiento simulado para {ticker}: {sentiment:.3f}")
-        
-        # Momentum (10 días)
-        if len(history) >= 10:
-            momentum = (history[-1] - history[-10]) / history[-10] if history[-10] != 0 else 0
-        else:
-            momentum = 0
-        
-        # NDI
-        ndi = (sentiment - momentum) * 3.0
-        ndi = max(-3.0, min(3.0, ndi))
-        
-        logger.info(f"📊 NDI {ticker}: sentiment={sentiment:.3f}, momentum={momentum:.3f}, ndi={ndi:.3f}")
-        return ndi
-        
-    except Exception as e:
-        logger.error(f"Error en calculate_ndi: {e}", exc_info=True)
-        return 0.0
-
-
-
-
 def require_api_key(f):
     """Decorator to optionally require API key."""
     from functools import wraps
