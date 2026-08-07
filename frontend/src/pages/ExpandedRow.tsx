@@ -42,7 +42,7 @@ const ExpandedRow: React.FC<ExpandedRowProps> = ({ ticker, baseSignal }) => {
         setLoading(true);
         setError(null);
         const response = await fetch(
-          `API_ENDPOINTS.signals?ticker=${ticker}`
+          `${API_ENDPOINTS.signals}?ticker=${ticker}`
         );
         
         if (!response.ok) {

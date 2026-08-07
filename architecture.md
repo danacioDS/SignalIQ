@@ -1,6 +1,6 @@
 # SignalIQ Architecture
 
-> **Last updated:** August 7, 2026 (revision `feature/market_intelligence` @ `238a4f7`)
+> **Last updated:** August 7, 2026 (revision `main` @ `130a686`)
 
 ## Overview
 
@@ -23,19 +23,21 @@ Markets are driven by stories as much as by numbers. Stories are created, spread
 - **Stdlib-only core**: Core analytics are pure Python (only fundamental Layer 5 and ingestion have external deps)
 - **Real news sentiment**: Production API integrates TextBlob-based sentiment from live RSS feeds
 - **Multi-source prices**: Alpha Vantage → Twelve Data → Yahoo Finance cascading fallback
+- **Rate limiting (new)**: flask-limiter applied (default `200/day` + `50/hour`; per-endpoint 10–30/min, in-memory storage)
+- **Optional API-key auth (new, disabled)**: `API_KEY` env + `require_api_key` decorator, currently commented out
 - **Production API**: Lightweight Flask server with real-time data (no database dependency)
 
 ### Tech Stack
 
 | Category | Technologies |
 |----------|-------------|
-| **Backend (production)** | Python 3.12, Flask 3.0, Flask-CORS 4.0, yfinance 0.2.36, numpy, requests, feedparser, TextBlob |
-| **Backend (declared deps)** | Also pins flask-limiter, flask-talisman, redis, python-dotenv, python-json-logger — several **never imported** by `main.py` |
+| **Backend (production)** | Python 3.12, Flask 3.0, Flask-CORS 4.0, flask-limiter 3.5 (**now applied**), yfinance 0.2.36, numpy, requests, feedparser, TextBlob |
+| **Backend (declared deps)** | Also pins flask-talisman, redis, python-dotenv, python-json-logger — **never imported** |
 | **Frontend** | React 19.2, TypeScript 4.9, Recharts 3.8, Axios 1.17, React Router 7, CRA 5 |
 | **Database** | PostgreSQL (public, raw, config, layer4 schemas) — offline pipeline only |
 | **AI/LLM** | Google Gemini (gemini-2.5-flash), Groq (llama-3.3-70b-versatile), GLM (glm-4.7-flash), MOCK mode |
 | **Data Sources** | Yahoo Finance, Alpha Vantage, Twelve Data, Google News RSS, Yahoo Finance RSS, MarketWatch RSS |
-| **Infrastructure** | Docker, Docker Compose (currently broken — see Notes), Vercel (frontend), Render (backend) |
+| **Infrastructure** | Docker, Vercel (frontend), Render (backend), GitHub Actions (CI — added Aug 7, currently red) |
 
 ### Core Philosophy
 
@@ -50,17 +52,19 @@ When narrative runs ahead of price action, SignalIQ flags it as exhaustion, dist
                      │                   Frontend                      │
                      │          React 19 + TypeScript UI               │
                      │   Dashboard · Economic · Data · Tech · About    │
-                     │        API base hardcoded to production         │
+                     │        API base centralized in config/api.ts    │
                      └──────────────────────┬──────────────────────────┘
-                                            │ HTTP / JSON
+                                             │ HTTP / JSON
                      ┌──────────────────────▼──────────────────────────┐
                      │          Flask API (port 10000)                 │
-                     │      backend/app/main.py · 400 lines            │
+                     │      backend/app/main.py · 514 lines            │
+                     │      7 endpoints (5 live on Render)             │
                      │      Multi-source: AV + Twelve + Yahoo          │
                      │      Real news sentiment (TextBlob)             │
                      │      NDI × 3.0 scale factor (clamped)           │
                      │      7-regime classification                    │
-                     │      Thread-safe cache · CORS (6 origins)       │
+                     │      Thread-safe cache · CORS (5 unique)        │
+                     │      Rate limiting (flask-limiter, in-memory)   │
                      └──────────────┬───────────────┬──────────────────┘
                                     │               │
                    ┌────────────────▼───┐   ┌───────▼────────────────┐
@@ -101,15 +105,15 @@ When narrative runs ahead of price action, SignalIQ flags it as exhaustion, dist
         └──────────────────────────────────────────────────────────────┘
 ```
 
-Data flows in two paths:
+Data flows in three paths:
 
 **Core pipeline (offline/batch):** fetch → normalize → write (Layer 1) → store (Layer 2) → analyze (Layer 3) → generate signals (Layer 4) → fundamental overlay (Layer 5). All layer modules live under `backend/app/layers/` and import via `config.thresholds` / `layers.*` — they only resolve when `backend/app` is on `sys.path`.
 
-**Live API path (production):** `backend/app/main.py` → price APIs (Alpha Vantage → Twelve Data → Yahoo Finance → fallback) → real news (TextBlob sentiment from RSS) → NDI `(sentiment - momentum) × 3` → 7-regime classification → JSON response. Operates independently of the database pipeline.
+**Live API path (production):** `backend/app/main.py` → price APIs (Alpha Vantage → Twelve Data → Yahoo Finance → fallback) → real news (TextBlob sentiment from RSS) → NDI `(sentiment - momentum) × 3` → 7-regime classification → JSON response. Operates independently of the database pipeline. ⚠️ Currently degraded by runtime bugs (see Flask API section) — every `/api/ticker` request falls back to minimal data.
 
 **AI enhancement (offline):** Layer 4 signals → `LLMRouter` (Gemini/GLM/Groq, configured via `PRIMARY_LLM` env var) → AI-powered analysis. Not connected to the production API.
 
-**Release flow:** `feature/market_intelligence` (dev) → merge to `main` → auto-deploy Vercel frontend + Render API.
+**Release flow:** `main` (dev + prod) → auto-deploy Vercel frontend + Render API. The former dev branch `feature/market_intelligence` is **stale** (2 commits behind `main`).
 
 ---
 
@@ -122,7 +126,7 @@ repo root/
 ├── report.md                               # Analysis & audit report
 ├── pitch.md                                # Commercial pitch
 ├── workflow.md                             # Development methodology
-├── new_featrure.md                         # Branch/release strategy notes
+├── new_featrure.md                         # Branch/release strategy notes (outdated — work now lands on main)
 ├── signals_demo.csv                        # Sample signal output
 ├── .env.example                            # Environment variable template (placeholders only)
 ├── .env.template                           # Alternate env template
@@ -132,26 +136,28 @@ repo root/
 ├── requirements.txt                        # Root deps (superset of backend/app)
 ├── requirements_layer1.txt                 # Layer 1 Python deps
 ├── requirements_test.txt                   # Test deps (pytest, pytest-cov)
-├── main.py                                 # ⚠️ STALE/BROKEN — imports removed modules (app.auth, app.db, app.market_intelligence)
-├── docker-compose.yml                      # ⚠️ BROKEN — references missing worker.py + Redis
 ├── Dockerfile                              # Root Docker image (legacy)
+├── .github/
+│   └── workflows/ci.yml                    # GitHub Actions: backend matrix, frontend build+test, ruff lint (red)
 │
 ├── backend/                                # Flask backend API server
-│   ├── Dockerfile                          # ⚠️ CMD `gunicorn app.main:app` fails on fresh checkout
-│   ├── requirements.txt                    # Backend deps
-│   ├── render.yaml                         # ⚠️ startCommand `gunicorn app.main:app` fails on fresh checkout
+│   ├── Dockerfile                          # ✅ FIXED — CMD `python -m app.main` works
+│   ├── requirements.txt                    # Backend deps (gunicorn no longer pinned)
+│   ├── render.yaml                         # ✅ FIXED — startCommand `python -m app.main` works
 │   ├── run.sh                              # Dev startup (cd backend && python app/main.py) — works
 │   ├── check_cache.py                      # Cache inspection utility
 │   ├── preload_cache.py                    # Cache preloading script
-│   ├── main.py.back_up                     # ⚠️ 1,323-line stale backup tracked in git
-│   ├── static/                             # Built frontend assets
+│   ├── fix_analyze.py                      # One-off main.py rewrite utility (scratch)
 │   └── app/
 │       ├── __init__.py                     # Empty — no sys.path bootstrap
-│       ├── main.py                         # Production API (400 lines, v6.2, multi-source + real news)
+│       ├── main.py                         # Production API (514 lines, v6.2, 7 endpoints, rate-limited)
+│       ├── main.py.pre_logging             # ⚠️ 400-line tracked backup of pre-logging main.py
+│       ├── main.py.bak_final               # ⚠️ untracked scratch file
+│       ├── main.py.fixed                   # ⚠️ untracked 2-line placeholder
 │       ├── api.py                          # Alternative entry (257 lines, User-Agent rotation)
 │       ├── news_pipeline.py                # Real news sentiment (TextBlob + 4 RSS feeds)
 │       ├── yahoo_proxy.py                  # Blueprint defined, never registered (dead)
-│       ├── force_rebuild.txt               # Render deploy-hack marker
+│       ├── logging_config.py               # ⚠️ Structured logging — NOT imported; missing `import os`
 │       ├── config/
 │       │   └── thresholds.py               # Centralized thresholds
 │       └── layers/                         # Layers 3, 4 & 5 + LLM Router (moved from repo root)
@@ -187,13 +193,15 @@ repo root/
 ├── frontend/                               # Layer 6 — React TypeScript UI
 │   ├── package.json                        # React 19.2, Recharts 3.8, Axios, React Router 7, CRA 5
 │   ├── tsconfig.json
-│   ├── .env.production                     # API URL: signaliq-api.onrender.com
-│   ├── .env.development                    # ⚠️ API URL: signaliq-api.onrender.com (returns 404)
+│   ├── .env.production                     # API URL: signaliq-api.onrender.com ✅
+│   ├── .env.development                    # ⚠️ API URL: signaliq-l8mi.onrender.com (returns 404)
 │   ├── public/
 │   └── src/
 │       ├── App.tsx                         # Shell with top nav + routes
 │       ├── App.test.tsx                    # ⚠️ FAILS — cannot resolve react-router-dom
 │       ├── index.tsx
+│       ├── config/
+│       │   └── api.ts                      # ✅ Centralized API_BASE / API_ENDPOINTS / DEFAULT_TICKERS
 │       ├── components/
 │       │   ├── styles.ts                   # Dark theme constants (C object)
 │       │   ├── NDIGauge.tsx                # NDI gauge visualization
@@ -202,8 +210,8 @@ repo root/
 │       │   ├── NarrativePanel.tsx          # Narrative analysis panel
 │       │   ├── TickerFocusStrip.tsx        # Ticker focus/detail strip
 │       │   ├── ScanTable.tsx               # Ticker scan results
-│       │   ├── TickerAnalysis.tsx          # Per-ticker deep analysis
-│       │   ├── ExpandedRow.tsx             # ⚠️ calls /api/signals-intel (missing in backend)
+│       │   ├── TickerAnalysis.tsx          # ⚠️ broken URL — `API_ENDPOINTS.ticker(${ticker}` (literal + missing `)`)
+│       │   ├── ExpandedRow.tsx             # ⚠️ broken URL — `API_ENDPOINTS.signals?ticker=...` (literal)
 │       │   ├── Layout.tsx                  # App layout shell
 │       │   ├── EconomicFoundation.tsx      # Theory cards
 │       │   ├── Methodology.tsx             # NDI explanation
@@ -216,16 +224,13 @@ repo root/
 │       ├── constants/
 │       │   └── ndiRegimes.ts               # NDI regime constants
 │       ├── services/
-│       │   ├── yahoo-finance-service.ts    # ⚠️ calls /api/prices (missing in backend); .bak4 backup tracked
-│       │   └── yahoo-finance-service.ts.bak4  # ⚠️ tracked backup
+│       │   └── yahoo-finance-service.ts    # ⚠️ broken URL + calls /api/prices/<ticker> (no such route)
 │       ├── utils/
 │       │   ├── regimeHelpers.ts            # Regime classification helpers
 │       │   └── velocimeterUtils.ts         # Velocimeter SVG utilities
-│       ├── setupProxy.js                   # ⚠️ proxies /api → signaliq-api.onrender.com (404)
+│       ├── setupProxy.js                   # ✅ proxies /api → signaliq-api.onrender.com
 │       └── pages/
-│           ├── Dashboard.tsx               # Main signals dashboard (API base hardcoded)
-│           ├── Dashboard.tsx.backup_final  # ⚠️ tracked backup
-│           ├── Dashboard.tsx.backup_layout # ⚠️ tracked backup
+│           ├── Dashboard.tsx               # Main signals dashboard (uses config/api.ts)
 │           ├── EconomicFoundation.tsx      # Economic foundation page
 │           ├── Data.tsx                    # Data sources page
 │           ├── TechStack.tsx               # Tech stack page
@@ -233,7 +238,7 @@ repo root/
 │           ├── Docs.tsx                    # Documentation page
 │           ├── Intelligence.tsx            # Market Intelligence page
 │           ├── ScanTable.tsx               # Scan results page
-│           └── ExpandedRow.tsx             # Expanded signal detail page
+│           └── ExpandedRow.tsx             # ⚠️ broken URL — same template-literal bug as component
 │
 ├── sql/                                    # Layer 2 — SQL Migrations (6 files)
 │   ├── 001_create_layer2_schema.sql        # Core tables (public.prices, headlines, ndi_signals)
@@ -267,8 +272,8 @@ repo root/
 │
 ├── tests/                                  # Official test suite
 │   └── pytest/                             # Single source of truth
-│       ├── test_smoke.py                   # ⚠️ 2/4 FAIL — imports root layers/ (moved) + news_pipeline
-│       ├── test_architecture.py            # ⚠️ 1/4 FAIL — walks root 'layers' (gone); 1 stub
+│       ├── test_smoke.py                   # ⚠️ 2/4 FAIL locally — test_api_import asserts undefined get_ticker_data; test_import_layer4 needs dotenv
+│       ├── test_architecture.py            # ⚠️ 2/4 FAIL — orchestrator count; imports nonexistent domain.ndi_calculator
 │       ├── test_db_contract.py             # DB migration/schema tests (integration, skipped)
 │       └── test_integration.py             # ⚠️ probes /api/health + /api/stats (not in main.py)
 │
@@ -276,7 +281,11 @@ repo root/
     └── app.log
 ```
 
-> **Note:** The root-level `layers/` and `config/` directories described in earlier versions of this document **no longer exist** — they moved into `backend/app/layers/` and `backend/app/config/`. The previously-listed dead backend modules (`market_intelligence.py`, `db.py`, `auth.py`, `llm_service.py`, `entity_linking.py`, `event_extractor.py`, `narrative_builder.py`, `news_fetcher.py`, `classification/`, `scoring/`) were **removed**.
+> **Removed since the previous revision:** `docker-compose.yml` (broken — referenced missing `worker.py` + Redis), stale root `main.py`, `backend/main.py.back_up`, `frontend/src/pages/Dashboard.tsx.backup_final` / `.backup_layout`, `frontend/src/services/yahoo-finance-service.ts.bak4`, `backend/app/force_rebuild.txt`.
+>
+> **Added since the previous revision:** `backend/app/logging_config.py`, `frontend/src/config/api.ts`, `.github/workflows/ci.yml`, `backend/app/main.py.pre_logging` (backup).
+>
+> **Note:** The root-level `layers/` and `config/` directories described in earlier versions of this document **no longer exist** — they moved into `backend/app/layers/` and `backend/app/config/`.
 
 ---
 
@@ -332,7 +341,7 @@ repo root/
 | `layer4_measurement.py` | NDI = `sentiment_zscore - momentum_zscore`. Validity gates, 5-day return. No clamping |
 | `layer4_persistence.py` | `PersistenceTracker` — consecutive-day breaches, JSON persistence, stale-gap detection (3-day max) |
 | `layer4_classification.py` | Inverted-U confidence, price pressure, risk escalation, attention text |
-| `layer4_orchestrator.py` | 9-step pipeline. Exports `process_asset()`, `process_batch()`, `OUTPUT_FIELDS`, plus `Layer4Orchestrator` class with LLM integration. **Imports `layers.llm_router` at module load** |
+| `layer4_orchestrator.py` | 9-step pipeline. Exports `process_asset()`, `process_batch()`, `OUTPUT_FIELDS`, plus `Layer4Orchestrator` class with LLM integration. **Imports `layers.llm_router` at module load** (requires `dotenv`) |
 | `integration.py` | Consolidated L3→L4 entry points: `run_pipeline()`, `run_batch_pipeline()` |
 
 **Output schema (12 fields):**
@@ -396,17 +405,19 @@ PRIMARY_LLM (env var, default: "mock") → FALLBACK_LLM (env var, default: "mock
 
 ### Flask API — Production (`backend/app/main.py`)
 
-**400-line Flask application** — multi-source price data with real news sentiment. 5 endpoints, inline NDI calculation, 7-regime classification.
+**514-line Flask application** — multi-source price data with real news sentiment. 7 endpoints, inline NDI calculation, 7-regime classification, rate-limited.
 
 #### Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | API root with version (6.2), status, mode, available endpoints |
-| `/health` | GET | Health check with cache TTL config and timestamp |
-| `/api/ticker/<ticker>` | GET | Deep ticker analysis: NDI, regime, price history (20 points), real headlines, confidence |
-| `/api/signals-live` | GET | Batch signals for multiple tickers (`?tickers=AAPL,MSFT,...`) |
-| `/api/tickers` | GET | Default ticker list (10 tickers) |
+| Endpoint | Method | Description | Live? |
+|----------|--------|-------------|-------|
+| `/` | GET | API root with version (6.2), status, mode, available endpoints | ✅ 200 |
+| `/health` | GET | Health check with cache TTL config and timestamp | ✅ 200 |
+| `/api/ticker/<ticker>` | GET | Deep ticker analysis: NDI, regime, price history (20 points), real headlines, confidence | ✅ 200 (degraded) |
+| `/api/signals-live` | GET | Batch signals for multiple tickers (`?tickers=AAPL,MSFT,...`) | ✅ 200 |
+| `/api/tickers` | GET | Default ticker list (10 tickers) | ✅ 200 |
+| `/api/prices` | GET | All-ticker prices for `yahoo-finance-service.ts` (NEW, Día 4) | ❌ 404 on deployed API |
+| `/api/signals-intel` | GET | Signals intelligence for `ExpandedRow.tsx` (NEW, Día 4) | ❌ 404 on deployed API |
 
 **Price sources (cascading fallback):**
 1. Alpha Vantage — `GLOBAL_QUOTE` endpoint (requires `ALPHA_VANTAGE_API_KEY`)
@@ -418,11 +429,11 @@ PRIMARY_LLM (env var, default: "mock") → FALLBACK_LLM (env var, default: "mock
 
 ```python
 def calculate_ndi(ticker):
-    price = get_price(ticker)          # Cascading: AV → Twelve → Yahoo → fallback
-    history = get_price_history(ticker) # Cascading: AV → Yahoo → simulated
+    price, _ = get_price(ticker)       # Cascading: AV → Twelve → Yahoo → fallback
+    history = get_price_history(ticker, days=30)  # ⚠️ returns a DICT, but treated as a list below
     news_data = process_news_for_ticker(ticker)  # Real RSS → TextBlob sentiment
     sentiment = news_data['sentiment']  # Average TextBlob polarity [-1, 1]
-    momentum = (history[-1] - history[-10]) / history[-10]  # 10-day return
+    momentum = (history[-1] - history[-10]) / history[-10]  # ⚠️ dict slices → TypeError
     ndi = (sentiment - momentum) * 3.0  # Scale factor for sensitivity
     ndi = clamp(ndi, -3.0, 3.0)        # Bounded output
 ```
@@ -433,15 +444,28 @@ This differs from the core L4 formula (`sentiment_zscore - momentum_zscore` usin
 
 **Caching:** thread-safe dict cache (`threading.Lock`); TTL per type: price=300s, history=600s, ticker=300s, signals=60s. Keys: `price_{ticker}`, `history_{ticker}_{days}`, `ticker_{ticker}`.
 
-**CORS:** 6 explicitly allowed origins (includes the retired `signaliq-api.onrender.com`).
+**Rate limiting (NEW):** `Limiter(key_func=get_remote_address)`, default limits `200 per day` + `50 per hour`; per-endpoint `10 per minute` (`/api/ticker/<ticker>`), `20 per minute` (`/api/signals-live`, `/api/signals-intel`), `30 per minute` (`/api/tickers`, `/api/prices`). **In-memory storage** — flask-limiter emits a startup warning recommending Redis.
 
-**No rate limiting.** flask-limiter is pinned in requirements but never applied.
+**Authentication (NEW, disabled):** optional `API_KEY` env var + `require_api_key` decorator; the only application is commented out.
 
-**No authentication.** All endpoints publicly accessible.
+**CORS:** 6 list entries, **5 unique origins** — the entry `https://signaliq-api.onrender.com` appears **twice** (main.py:345-346).
+
+**Import robustness (fixed):** `from .news_pipeline import process_news_for_ticker` with `except ImportError → from news_pipeline import ...`. Verified working: `python -m app.main` (Docker `CMD` + `render.yaml` `startCommand`), `cd backend/app && python main.py`, `cd backend && python app/main.py`. Gunicorn is no longer in `requirements.txt`.
 
 **Price history:** always returns 20 data points — real API data when available, simulated random walk as fallback.
 
-**Import fragility (⚠️):** `from news_pipeline import process_news_for_ticker` (line 17) is an absolute import. It resolves only when `backend/app` is the working directory or on `sys.path`. Verified working: `cd backend/app && python main.py`, `cd backend && python app/main.py`. Verified failing: `gunicorn app.main:app` (Docker `CMD`, `render.yaml` `startCommand`), `python -m app.main`, and `from backend.app.main import app`.
+#### ⚠️ Critical runtime bugs (verified with the Flask test client, Aug 7, 2026)
+
+| # | Bug | Location | Impact |
+|---|-----|----------|--------|
+| 1 | `get_ticker_data` is **not defined** | `main.py:468, 479` (`/api/signals-intel`) | **500 NameError** on the endpoint |
+| 2 | `get_current_price` is **not defined** | `main.py:163` (`get_price_history` simulation branch) | NameError whenever real history is unavailable |
+| 3 | `get_price()` caches a **float** but returns `(price, source)` | `main.py:80-126` | Cache hits break tuple unpacking → "cannot unpack non-iterable float object" in `/api/prices` / `/api/ticker` |
+| 4 | `calculate_ndi` treats the **dict** from `get_price_history()` as a list | `main.py:212-265` (`len(history)`, `history[-1]`, `history[-20:]` on dict keys) | Every `/api/ticker` call raises and returns minimal fallback data (`news_count: 0`, `ndi: 0.0`) |
+| 5 | All price sources labeled `"alphavantage"` | `main.py:108, 119, 126` | Twelve Data / Yahoo / fallback misreported |
+| 6 | CORS origin duplicated | `main.py:345-346` | Duplicate entry |
+| 7 | `flask_limiter` imported twice | `main.py:11-12, 27-28` | Dead import |
+| 8 | Version mismatch | root `6.2` vs startup log `v6.1` | Cosmetic |
 
 ### News Pipeline (`backend/app/news_pipeline.py`)
 
@@ -471,33 +495,38 @@ def process_news_for_ticker(ticker):
 
 **Note:** still uses `print()` on lines 44 and 84.
 
+### Logging Config (`backend/app/logging_config.py`) — NEW, dead
+
+**65-line structured-logging helper** (JSON formatter + `setup_logging()`). **Never imported by any module**, and **broken**: it references `os.environ` on line 44 without `import os` → `NameError` at import time. Wire it into `main.py` (and fix the import) or delete it.
+
 ### Flask API — Alternative (`backend/app/api.py`)
 
 **257-line alternative entry point** — nearly identical to `main.py` but with:
 - Exponential backoff retry for yfinance requests (User-Agent rotation)
 - `/api/health` (both `/health` and `/api/health` prefixes)
-- `/api/ticker/analysis/<ticker>` route (no `/api/ticker/<ticker>`, no `/api/signals-live`)
+- `/api/ticker/analysis/<ticker>` route (no `/api/ticker/<ticker>`, `/api/signals-live`, `/api/prices`, or `/api/signals-intel`)
 - Used as a development/debug variant; not wired to production
 
 ### Unused / Dead Modules (current)
 
 | Module | Lines | Purpose | Status |
 |--------|-------|---------|--------|
-| `yahoo_proxy.py` | 15 | `/api/yahoo-price/<ticker>` proxy Blueprint | Defined, never registered |
-| `main.py.back_up` | 1,323 | Stale backup of an older main | Tracked in git |
-| root `main.py` | ~90 | Legacy API referencing `app.auth`, `app.db`, `app.market_intelligence` | **Broken** — modules removed |
+| `yahoo_proxy.py` | 14 | `/api/yahoo-price/<ticker>` proxy Blueprint | Defined, never registered |
+| `logging_config.py` | 65 | Structured JSON logging | Never imported; missing `import os` |
+| `main.py.pre_logging` | 400 | Pre-logging snapshot of `main.py` | Tracked in git |
+| `main.py.bak_final` / `main.py.fixed` | — | Scratch files | Untracked (`main.py.fixed` is a 2-line placeholder) |
 
-**The previous 13 dead modules have been removed** (market_intelligence, db, auth, llm_service, entity_linking, event_extractor, narrative_builder, news_fetcher, classification/, scoring/, *_job CLIs).
+**Removed since the previous revision:** `docker-compose.yml`, stale root `main.py`, `backend/main.py.back_up` (1,323 lines), `force_rebuild.txt`, `Dashboard.tsx.backup_*`, `yahoo-finance-service.ts.bak4`.
 
 ### Layer 6 — Frontend (`frontend/`)
 
-**React 19.2 + TypeScript (CRA 5)** — 16 components, 10 pages, 39 TS files (~4,430 lines). **Builds cleanly; its single test fails.**
+**React 19.2 + TypeScript (CRA 5)** — 15 components, 9 pages, 37 TS files (~4,460 lines). **Builds cleanly; its single test fails.**
 
 #### Routes
 
 | Route | Page | Description |
 |-------|------|-------------|
-| `/` | Dashboard | Main signals dashboard (API base hardcoded) |
+| `/` | Dashboard | Main signals dashboard (uses `config/api.ts`) |
 | `/economic` | EconomicFoundation | Theory cards |
 | `/data` | Data | Data sources |
 | `/tech` | TechStack | Technology breakdown |
@@ -507,18 +536,19 @@ def process_news_for_ticker(ticker):
 
 | Component | Purpose |
 |-----------|---------|
-| `pages/Dashboard.tsx` | Main dashboard: signals, NDI gauge, price chart (Recharts), NDIFrameworkTable (7 regimes), NarrativePanel, TickerFocusStrip. **Hardcodes `API_BASE = 'https://signaliq-api.onrender.com'`** |
+| `config/api.ts` | **NEW** — centralizes `API_BASE` (env `REACT_APP_API_URL` or default), `API_ENDPOINTS`, `DEFAULT_TICKERS` |
+| `pages/Dashboard.tsx` | Main dashboard: signals, NDI gauge, price chart (Recharts), NDIFrameworkTable (7 regimes), NarrativePanel, TickerFocusStrip. ✅ Uses `config/api.ts` |
 | `hooks/useSignalAnalysis.ts` | Transforms signal data into 7-regime analysis with explanatory text + inverted-U confidence |
 | `NDIVelocimeter.tsx` | SVG semi-circular gauge |
 | `NDIGauge.tsx` / `NDIThermometer.tsx` | NDI gauges |
 | `NarrativePanel.tsx` / `TickerFocusStrip.tsx` | Narrative display / ticker strip |
-| `TickerAnalysis.tsx` | Calls `/api/ticker/<ticker>` (exists) |
-| `ExpandedRow.tsx` (component + page) | ⚠️ Calls `/api/signals-intel` — **not present in backend** |
-| `services/yahoo-finance-service.ts` | ⚠️ Calls `/api/prices` — **not present in backend** |
+| `components/TickerAnalysis.tsx` | ⚠️ **broken URL** — `` `API_ENDPOINTS.ticker(${ticker}` `` (literal string, missing `${}`, missing `)`) |
+| `components/ExpandedRow.tsx` + `pages/ExpandedRow.tsx` | ⚠️ **broken URL** — `` `API_ENDPOINTS.signals?ticker=${ticker}` `` (literal string) |
+| `services/yahoo-finance-service.ts` | ⚠️ **broken URL** — `` `API_ENDPOINTS.prices/${ticker}` `` (literal string) and calls `/api/prices/<ticker>` (no such route; backend exposes `/api/prices` for all tickers) |
 
 **Styling:** Shared `C` object from `styles.ts` — dark theme, inline styles. Tailwind installed but unused.
 
-**Data fetching:** Axios to hardcoded `signaliq-api.onrender.com` in 5 source files — `REACT_APP_API_URL` is effectively ignored. 5-minute polling with static fallback. `setupProxy.js` points at the retired `signaliq-api.onrender.com`.
+**Data fetching:** Axios/fetch to API URLs centralized in `config/api.ts`. `Dashboard.tsx` interpolates correctly; three other files have **template-literal regressions** from the Día 4 refactor. `.env.production` → `signaliq-api.onrender.com` (correct); `.env.development` → `signaliq-l8mi.onrender.com` (**dead**, 404); `setupProxy.js` → `signaliq-api.onrender.com` (fixed).
 
 **Standalone HTML dashboards** in `web/`: `index.html`, `automatico.html`, `test.html`.
 
@@ -544,7 +574,7 @@ RATE_LIMIT_ANALYZE = "10 per minute"
 CACHE_TTL_SECONDS = 300
 ```
 
-**Note:** Rate-limit constants are defined but **never applied**.
+**Note:** the rate-limit constants defined in `thresholds.py` are **not** what `main.py` uses — `main.py` configures the Limiter inline (default `200 per day` / `50 per hour`; per-endpoint 10–30/min).
 
 ### Environment Variables
 
@@ -553,6 +583,8 @@ CACHE_TTL_SECONDS = 300
 | `PORT` | Server port (default: 10000) | Production API |
 | `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key | Production API |
 | `TWELVE_DATA_API_KEY` | Twelve Data API key | Production API |
+| `API_KEY` | Optional API-key auth (`X-API-Key` header) | Production API (disabled by default) |
+| `LOG_FORMAT` | `json` or `text` | `logging_config.py` (unused — not imported) |
 | `PRIMARY_LLM` | LLM provider (gemini/glm/groq/mock) | Offline pipeline |
 | `FALLBACK_LLM` | Fallback provider | Offline pipeline |
 | `GROQ_API_KEY` | Groq API key | Offline pipeline |
@@ -571,8 +603,8 @@ CACHE_TTL_SECONDS = 300
 
 | Test File | Type | Tests | Result |
 |-----------|------|-------|--------|
-| `test_smoke.py` | Smoke | 4 | **2 FAIL** (`test_import_layer4`, `test_import_config` reference root `layers/`; `test_api_import` fails on `news_pipeline` import) |
-| `test_architecture.py` | Architecture | 4 | **1 FAIL** (`test_only_one_layer4_orchestrator` walks root `layers/`); 1 stub (`test_no_circular_imports` = `pass`); 2 pass vacuously (scan empty/nonexistent paths) |
+| `test_smoke.py` | Smoke | 4 | **2 FAIL locally** (`test_import_layer4` — `dotenv` not installed in the local venv, passes in CI where `backend/requirements.txt` installs it; `test_api_import` — asserts `hasattr(main, 'get_ticker_data')`, which is **undefined**) |
+| `test_architecture.py` | Architecture | 4 | **2 FAIL** (`test_only_one_layer4_orchestrator` finds 2 orchestrator files — layer3 + layer4; `test_ndi_formula_consistency` imports nonexistent `domain.ndi_calculator`); 2 pass (real checks, no longer vacuous) |
 | `test_db_contract.py` | Integration | 3 | Skipped (needs `DATABASE_URL`) |
 | `test_integration.py` | Integration | 2 | Skipped; **contract stale** — probes `/api/health` + `/api/stats` which `main.py` does not expose |
 
@@ -583,21 +615,26 @@ pytest tests/pytest/ -m integration -v
 pytest tests/pytest/ -v
 ```
 
+**CI (`.github/workflows/ci.yml`, new) — currently red:**
+- `backend-tests`: Python 3.11/3.12 matrix; installs `backend/requirements.txt` + pytest; runs `cd backend && python -m pytest ../tests/pytest/ -m "not integration"`. From the `backend` cwd the architecture tests resolve `backend/app/layers` relative to `backend/` → `test_only_one_layer4_orchestrator` fails on `os.path.exists`; `test_api_import` fails regardless.
+- `frontend-tests`: `npm run build` (PASS); `npm test -- --watchAll=false --passWithNoTests || true` — the failing suite is masked by `|| true`.
+- `lint`: `ruff check backend/app --ignore=E501` — ruff is not version-pinned; unused/duplicate imports and bare `except`s are likely flagged.
+
 ### Frontend
-- `npm run build` — **PASS**
-- `npm test` — **FAIL** (react-scripts 5 / Jest cannot resolve `react-router-dom` v7)
+- `npm run build` — **PASS** (verified)
+- `npm test` — **FAIL** (react-scripts 5 / Jest cannot resolve `react-router-dom` v7: `Cannot find module 'react-router/dom'`)
 
 ### Architecture Invariants (intended, enforced by `test_architecture.py`)
-1. **Single orchestrator** — only one `Layer4Orchestrator` class defined
-2. **No circular imports** — `layer4_measurement.py` does not import from `layers/__init__.py` (**stub — `pass`**)
-3. **NDI formula consistency** — all NDI functions use `sentiment_zscore - momentum_zscore`
-4. **Zero sys.exit** — no `sys.exit()` in library code
+1. **Single orchestrator** — only one `Layer4Orchestrator` class defined (test currently fails: finds 2 orchestrator files, layer3 + layer4)
+2. **No circular imports** — AST-based check for module self-imports (**real implementation since Día 3, passes**)
+3. **NDI formula consistency** — asserts `domain = core × 3.0` (test currently fails: `domain` module doesn't exist)
+4. **Zero sys.exit** — no `sys.exit()` in library code (passes)
 
 ### Code Quality
-- **No linter configured** — no ruff/black/flake8 despite `mypy.ini`
-- **Minimal type hints** — partial
+- **No linter configured locally** — CI runs `ruff` (unpinned); no `pyproject.toml` / ruff config
+- **Minimal type hints** — partial (`mypy.ini` exists, unused)
 - **Mixed language** — Spanish and English used inconsistently
-- **No CI/CD** — no GitHub Actions; failing suite never caught automatically
+- **CI added but red** — failing suite is now nominally caught, but the gate is open
 
 ---
 
@@ -608,25 +645,29 @@ pytest tests/pytest/ -v
 | Service | Platform | URL | Status |
 |---------|----------|-----|--------|
 | Frontend | Vercel | https://signaliq-zeta-ten.vercel.app | 200 OK |
-| Backend | Render | https://signaliq-api.onrender.com | 200 OK (v6.2) |
-| ~~Backend (legacy)~~ | Render | https://signaliq-api.onrender.com | **404** — still referenced in dev config + docs |
+| Backend | Render | https://signaliq-api.onrender.com | 200 OK (v6.2); `/health` healthy |
+| Backend `/api/ticker/NVDA` | Render | https://signaliq-api.onrender.com/api/ticker/NVDA | 200 OK — **degraded** (news_count 0, ndi 0.0, fallback price) |
+| Backend `/api/prices` | Render | https://signaliq-api.onrender.com/api/prices | **404** — deployed build predates the endpoint |
+| Backend `/api/signals-intel` | Render | https://signaliq-api.onrender.com/api/signals-intel | **404** — deployed build predates the endpoint |
+| ~~Backend (legacy)~~ | Render | https://signaliq-l8mi.onrender.com | **404** — still referenced in `frontend/.env.development` |
+
+> The local repo is **1 commit ahead of `origin/main`** (`130a686`), and the deployed Render instance 404s on the two new endpoints added in the Día 4 commit — i.e., the deployed build is older than `origin/main`. Push + redeploy is required to make `/api/prices` and `/api/signals-intel` live.
 
 ### Docker
 
 ```bash
 docker build -t signaliq-api ./backend
-docker-compose up
 ```
 
-- **Base image:** python:3.11-slim, WORKDIR `/app` (= backend content)
-- **Entrypoint:** `CMD ["gunicorn", "app.main:app", ...]` — ⚠️ **fails on fresh checkout** (`ModuleNotFoundError: news_pipeline`)
-- **`docker-compose.yml` is broken** — references `worker.py` (missing) and Redis services
+- **Base image:** python:3.12-slim, WORKDIR `/app` (= backend content)
+- **Entrypoint:** `CMD ["python", "-m", "app.main"]` — ✅ **works** (verified). No gunicorn in requirements.
+- `docker-compose.yml` was **deleted** (it referenced missing `worker.py` + Redis).
 
-### Branch / Release Flow (new)
+### Branch / Release Flow (changed Aug 7)
 
 ```
-main (stable) → https://signaliq-zeta-ten.vercel.app (PRODUCTION, auto-deploy)
-   └── feature/market_intelligence (development) → localhost:3000
+main (dev + prod) → https://signaliq-zeta-ten.vercel.app (auto-deploy)
+   └── feature/market_intelligence — STALE, 2 commits behind (Día 1–5 landed directly on main)
 ```
 
 ### Cron Jobs
@@ -661,48 +702,52 @@ python -m ingestion.orchestrator --type prices --dry-run
 | **Production API simplification** | yfinance + real news removes database operational burden |
 | **Multi-source price cascade** | AV → Twelve → Yahoo → fallback ensures high availability |
 | **NDI scale factor** | Factor of 3.0 amplifies small divergences; stable since Jul 10 |
-| **Dead-code removal + layers relocation** | `backend/app` is self-contained; fewer import hops across the repo |
-| **Branch-based release flow** | `main` = production, `feature/*` = isolated experiments |
+| **Relative-import fallback for entrypoints** | `from .news_pipeline` → `from news_pipeline` lets both `python -m app.main` and `python main.py` work |
+| **Rate limiting applied (Día 5)** | flask-limiter wired: default 200/day + 50/hour, per-endpoint 10–30/min (in-memory) |
+| **Optional API-key auth** | `require_api_key` decorator + `API_KEY` env; disabled by default |
+| **Centralized frontend API config** | `config/api.ts` replaces scattered hardcoded URLs (refactor partially regressed) |
+| **CI via GitHub Actions** | Backend matrix + frontend build/test + ruff lint (added Aug 7, currently red) |
 
 ---
 
 ## Status Summary
 
-### Completed
-- All 6 layers implemented and integrated (now under `backend/`)
-- Dead-code purge: 13 unused backend modules removed; `backend/app` is lean
-- Layers 3–5 + LLM Router relocated into `backend/app/layers/` with `backend/app/config/thresholds.py`
-- Production API live on `signaliq-api.onrender.com` (v6.2) with real news + multi-source prices (verified)
-- Frontend builds cleanly (React 19.2 / Router 7 / Recharts 3.8)
-- Centralized thresholds; architecture invariants (partially enforced)
-- Branch workflow: `main` (prod) / `feature/market_intelligence` (dev)
-- No live secrets in tracked files
+### Completed (since the `238a4f7` revision)
+- ✅ **Entrypoint fixed**: Dockerfile + render.yaml run `python -m app.main` (verified working)
+- ✅ **News pipeline import hardened**: relative → absolute fallback
+- ✅ **Rate limiting applied** (flask-limiter, in-memory): default + per-endpoint limits
+- ✅ **Optional API-key auth** scaffolding (`API_KEY` env, `require_api_key` decorator)
+- ✅ **CI added** (GitHub Actions: backend matrix, frontend build/test, ruff lint)
+- ✅ **Cleanup**: `docker-compose.yml`, stale root `main.py`, `main.py.back_up`, `Dashboard.tsx.backup_*`, `.bak4`, `force_rebuild.txt` deleted
+- ✅ **Frontend API config centralized** (`config/api.ts`); `setupProxy.js` + `api.py` CORS point to the live host
+- ✅ **`.env.example` rewritten** with `API_KEY`, `LOG_FORMAT`, `CORS_ORIGINS`
+- ✅ New endpoints `/api/prices` + `/api/signals-intel` added to `main.py` code
+- ✅ All 6 layers implemented; dead-code purge; layers under `backend/app/layers/`
+- ✅ Production API live on `signaliq-api.onrender.com` (v6.2); frontend live on Vercel
+- ✅ No live secrets in tracked files
 
 ### Known Issues (current)
-- **Test suite red**: 4/8 backend tests fail; architecture tests partially pass vacuously; frontend test cannot run
-- **Entrypoint fragility**: `gunicorn app.main:app` (Docker + render.yaml) fails; only `cd backend/app && python main.py` works
-- **Stale root `main.py`** references removed modules; **`docker-compose.yml`** references missing `worker.py`
-- **Frontend calls missing endpoints** (`/api/prices`, `/api/signals-intel`)
-- **Two API hostnames**: `signaliq-api.onrender.com` (live) vs `signaliq-api.onrender.com` (404) in dev config + docs
-- Triplicate NDI formula (core L4 / API / frontend)
-- 7 regimes (API + frontend) vs 4 regimes (core L4)
-- No authentication; no rate limiting (despite pinned flask-limiter)
-- No CI/CD; zero frontend tests passing; minimal type hints; no linter
-- Mixed language (ES/EN); `print()` in news_pipeline
-- LLM default mismatch (`llm_router` mock vs `system_config` glm/groq)
-- Backups tracked: `main.py.back_up`, `Dashboard.tsx.backup_*`, `.bak4`, `force_rebuild.txt`
-- `test_no_circular_imports` is a stub; integration test contract stale
-- NDI scale factor unguarded by tests
+- **Test suite red**: 4/8 backend tests fail (new causes); CI is red
+- **`main.py` runtime bugs (verified)**: `/api/signals-intel` → 500 (`get_ticker_data` undefined); `/api/ticker` degrades to fallback data (`get_price_history` dict treated as list; `get_current_price` undefined); cache/unpack mismatch; all sources labeled `alphavantage`
+- **Frontend fetch regressions**: `API_ENDPOINTS.*` used as literal strings in 3 files (`ExpandedRow`, `TickerAnalysis`, `yahoo-finance-service`)
+- **Deployed API 404s** on `/api/prices` + `/api/signals-intel`; live `/api/ticker` returns `news_count: 0` / fallback price
+- **Legacy host in dev config**: `frontend/.env.development` → `signaliq-l8mi.onrender.com` (404)
+- **Branch flow changed**: `feature/market_intelligence` stale; Día 1–5 landed directly on `main`
+- **Triplicate NDI formula** (core L4 / API / frontend); 7 regimes (API + frontend) vs 4 (core L4)
+- **Auth disabled** by default; rate limiting on in-memory storage (Redis not wired)
+- **Frontend test red** (react-scripts 5 / React Router 7); ruff unpinned; `|| true` masks frontend test failures in CI
+- **`logging_config.py` dead + broken** (missing `import os`); tracked backup `main.py.pre_logging`; untracked scratch files
+- **Integration test contract stale** (`/api/health`, `/api/stats`)
+- **Mixed language (ES/EN)**; `print()` in `news_pipeline.py`; LLM default mismatch; NDI scale factor unguarded by tests
 
 ### Future Directions
-- Fix test suite + entrypoint imports; add CI (GitHub Actions)
-- Delete stale artifacts (root `main.py`, backups, broken compose)
-- Reconcile API hostnames and frontend endpoint usage
+- Fix the four `main.py` runtime bugs and redeploy to Render; verify against the deployed host
+- Fix the frontend template-literal regressions; align `yahoo-finance-service` with the `/api/prices` contract
+- Make CI green: fix test assertions, run pytest from the repo root, pin ruff, drop `|| true`
+- Reconcile API hostnames (`signaliq-l8mi` → `signaliq-api` in `.env.development`)
 - NDI formula unification; regime model reconciliation (4 ↔ 7)
-- Frontend tests (fix React Router resolution, add Jest + RTL coverage)
-- Type hints + linter (ruff); API authentication + rate limiting
-- Redis/persistent cache; unit tests for production API logic
-- Freeze NDI scale factor with automated validation
+- Redis-backed rate limiting; enable API-key auth; frontend tests (fix Router resolution)
+- Type hints + ruff config; unit tests for production API logic; freeze NDI scale factor with automated validation
 
 ---
 
@@ -710,16 +755,14 @@ python -m ingestion.orchestrator --type prices --dry-run
 
 ```bash
 # Backend API server (production — works)
+cd backend && python -m app.main
+# or
 cd backend/app && python main.py
 # or
 cd backend && python app/main.py
 
 # Backend API server (alternative entry — dev variant)
 cd backend/app && python api.py
-
-# ⚠️ Broken entrypoints (fresh checkout)
-# gunicorn app.main:app        → ModuleNotFoundError: news_pipeline
-# python -m app.main           → ModuleNotFoundError: news_pipeline
 
 # Test suite (currently 4/8 failing)
 pytest tests/pytest/ -m "not integration" -v
@@ -757,49 +800,67 @@ python scripts/verify_refactor.py
 # Install cron jobs
 ./scripts/install_crontab.sh
 
-# Docker (⚠️ entrypoint broken on fresh checkout)
+# Docker (✅ entrypoint fixed)
 docker build -t signaliq-api ./backend
-docker-compose up   # ⚠️ references missing worker.py
 ```
 
 ---
 
 ## Notes
 
-- `backend/app/config/thresholds.py` is the single source of truth for thresholds
+- `backend/app/config/thresholds.py` is the single source of truth for thresholds (its rate-limit constants are not what `main.py` uses — the Limiter is configured inline)
 - `layers/lm_lexicon.py` (in `backend/app/layers/`) is the canonical Loughran-McDonald lexicon (558 words, 6 categories)
 - `calculate_narrative_divergence_index()` is the canonical core NDI function in `layer4_measurement.py`
-- The live API `calculate_ndi()` in `main.py` uses `(sentiment - momentum) × 3` with TextBlob — different from core L4's rolling z-score approach (known triplicate-formula issue)
+- The live API `calculate_ndi()` in `main.py` uses `(sentiment - momentum) × 3` with TextBlob — different from core L4's rolling z-score approach (known triplicate-formula issue). **Currently buggy**: `get_price_history()` returns a dict but the code slices it as a list → every request degrades to minimal fallback data.
 - `classify_regime()` in `main.py` supports 7 regimes; core L4 uses 4 academic regimes
 - `api.py` is a development variant with User-Agent rotation and exponential backoff
-- The production API (`main.py`) uses multi-source prices (AV → Twelve → Yahoo) and real news sentiment
+- The production API (`main.py`) uses multi-source prices (AV → Twelve → Yahoo) and real news sentiment — but all sources are labeled `"alphavantage"` and `get_price()` mixes float-cache/tuple-return
 - Root-level `layers/` and `config/` no longer exist — all analytics live under `backend/app/layers/` and `backend/app/config/`
 - `yahoo_proxy.py` Blueprint is defined but never registered
+- `logging_config.py` is never imported and would raise `NameError` (`os` not imported) — wire it up or delete it
 - No `sys.exit()` in library code; exceptions propagate
 - `load_dotenv()` guarded by `ENVIRONMENT != 'test'`
 - Layer 1 installs no cron jobs automatically — run `scripts/install_crontab.sh`
 - Fundamental engine requires `numpy`; all other layers stdlib-only
-- Frontend hardcodes `signaliq-api.onrender.com` in 5 source files; `.env.development` + `setupProxy.js` point at the retired `signaliq-api.onrender.com` (404)
-- Live production: frontend `signaliq-zeta-ten.vercel.app`, API `signaliq-api.onrender.com` (both verified 200)
+- `frontend/.env.development` still points at the dead `signaliq-l8mi.onrender.com`; `setupProxy.js` and `.env.production` point at `signaliq-api.onrender.com`
+- Live production: frontend `signaliq-zeta-ten.vercel.app`, API `signaliq-api.onrender.com` (both verified 200); `/api/prices` + `/api/signals-intel` are **404** on the deployed API
 - News pipeline uses TextBlob (not Loughran-McDonald) for live API sentiment
+- Rate limiting is in-memory; flask-limiter warns to use Redis in production
+- The `feature/market_intelligence` branch is stale; recent work lands directly on `main`
 
 ## Estado Actualizado (Agosto 2026)
 
 ### ✅ Día 1 Completado - Estabilización
 - Archivos stale eliminados
 - Imports arreglados (soportan relativo y absoluto)
-- Logging estructurado implementado
+- Logging estructurado implementado (`logging_config.py` — aún no conectado)
 - Datos simulados etiquetados
 - README limpiado
 
 ### ✅ Día 2 - Entrypoints y Configuración
-- Dockerfile actualizado (usa python -m app.main)
-- render.yaml actualizado
-- Hostname unificado: signaliq-api.onrender.com
-- Variables de entorno documentadas
+- Dockerfile actualizado (usa `python -m app.main`) — ✅ verificado
+- render.yaml actualizado — ✅ verificado
+- Hostname unificado: `signaliq-api.onrender.com` (README, setupProxy, api.py; **`.env.development` aún apunta a `signaliq-l8mi`**)
+- Variables de entorno documentadas (`.env.example` con `API_KEY`, `LOG_FORMAT`)
 
-### 🚀 Próximo: Día 3 - Tests
-- Arreglar tests de smoke
-- Arreglar tests de arquitectura
-- Configurar GitHub Actions CI
+### ✅ Día 3 - Tests y CI
+- Tests de smoke reescritos (4) y tests de arquitectura reescritos (4, cheques reales)
+- GitHub Actions CI añadido (backend 3.11/3.12, frontend build+test, ruff)
+- **⚠️ El CI está en rojo**: 4/8 tests fallan (orchestrator count, `domain` inexistente, `get_ticker_data` indefinido)
 
+### ✅ Día 4 - Endpoints Faltantes y Consistencia API-Frontend
+- `/api/prices` y `/api/signals-intel` añadidos a `main.py` (código)
+- `config/api.ts` centraliza URLs del frontend
+- **⚠️ Regresión**: `API_ENDPOINTS.*` se pegó como string literal (sin `${}`) en `ExpandedRow`, `TickerAnalysis`, `yahoo-finance-service`
+- **⚠️ `/api/signals-intel` devuelve 500** (`get_ticker_data` no existe)
+
+### ✅ Día 5 - Rate Limiting y Seguridad
+- flask-limiter aplicado (200/día + 50/hora default; 10–30/min por endpoint, in-memory)
+- Auth opcional con `API_KEY` (decorador listo, deshabilitado por defecto)
+
+### 🐛 Bugs Críticos Detectados (a corregir)
+1. `get_ticker_data` / `get_current_price` no definidos en `main.py`
+2. Caché guarda `float` pero `get_price()` retorna tupla → error de unpacking en cache hits
+3. `calculate_ndi` trata el dict de `get_price_history()` como lista → `/api/ticker` siempre devuelve datos mínimos
+4. Endpoints nuevos no están desplegados (404 en Render) — falta push + redeploy
+5. Regresión de template literals en el frontend (3 archivos)

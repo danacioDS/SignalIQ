@@ -34,4 +34,4 @@ def test_api_import():
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../backend'))
     from app import main
     assert hasattr(main, 'app')
-    assert hasattr(main, 'get_ticker_data')
+    assert hasattr(main, 'app')

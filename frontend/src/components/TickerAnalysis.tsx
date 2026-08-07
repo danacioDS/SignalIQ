@@ -21,7 +21,7 @@ export default function TickerAnalysis({ ticker, onBack }: TickerAnalysisProps) 
       try {
         setLoading(true);
         setError("");
-        const response = await fetch(`API_ENDPOINTS.ticker(${ticker}`);
+        const response = await fetch(`${API_ENDPOINTS.ticker(ticker)}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const result = await response.json();
         if (result.error) throw new Error(result.error);

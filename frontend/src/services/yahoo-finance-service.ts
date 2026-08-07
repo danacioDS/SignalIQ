@@ -35,7 +35,7 @@ const FALLBACK_DATA: Record<string, PriceData> = {
 /*** */
 export const getPriceFromYahoo = async (ticker: string): Promise<PriceData | null> => {
   try {
-    const url = `API_ENDPOINTS.prices/${ticker}`;
+    const url = `${API_ENDPOINTS.prices}`;
     
     const response = await fetch(url, {
       headers: {
