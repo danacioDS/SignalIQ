@@ -8,6 +8,9 @@ import random
 from datetime import datetime, timedelta
 from threading import Lock
 
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import yfinance as yf
@@ -20,6 +23,9 @@ try:
 except ImportError:
     # Fallback to absolute import (when run as script)
     from news_pipeline import process_news_for_ticker
+
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 # ============================================================
 # CONFIGURACIÓN
@@ -323,6 +329,13 @@ def calculate_ndi(ticker):
 
 app = Flask(__name__)
 
+# Rate limiting
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"]
+)
+
 # ⭐ CONFIGURAR CORS CORRECTAMENTE
 CORS(app, origins=[
     "http://localhost:3000",
@@ -342,6 +355,7 @@ def health():
         'timestamp': datetime.now().isoformat()
     })
 
+@limiter.limit("10 per minute")
 @app.route('/api/ticker/<ticker>')
 def get_ticker(ticker):
     ticker = ticker.strip().upper()
@@ -351,6 +365,7 @@ def get_ticker(ticker):
     data = calculate_ndi(ticker)
     return jsonify(data)
 
+@limiter.limit("20 per minute")
 @app.route('/api/signals-live')
 def signals_live():
     tickers_param = request.args.get('tickers', '')
@@ -373,6 +388,7 @@ def signals_live():
         'timestamp': datetime.now().isoformat()
     })
 
+@limiter.limit("30 per minute")
 @app.route('/api/tickers')
 def get_tickers():
     return jsonify({'tickers': TICKERS, 'count': len(TICKERS)})
@@ -403,6 +419,7 @@ if __name__ == '__main__':
     logger.info(f"📊 Twelve Data: {'✅' if TWELVE_DATA_API_KEY else '❌'}")
     logger.info("=" * 50)
     app.run(host='0.0.0.0', port=port, debug=False)
+@limiter.limit("30 per minute")
 @app.route('/api/prices', methods=['GET'])
 def get_all_prices():
     """
@@ -437,6 +454,7 @@ def get_all_prices():
     
     return jsonify(result)
 
+@limiter.limit("20 per minute")
 @app.route('/api/signals-intel', methods=['GET'])
 def get_signals_intel():
     """
@@ -466,3 +484,31 @@ def get_signals_intel():
             results[t] = {'error': str(e)}
     
     return jsonify(results)
+
+# ============================================
+# Authentication (optional)
+# ============================================
+
+API_KEY = os.environ.get('API_KEY')
+
+def require_api_key(f):
+    """Decorator to optionally require API key."""
+    from functools import wraps
+    
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        # Si no hay API_KEY configurada, permitir todo
+        if not API_KEY:
+            return f(*args, **kwargs)
+        
+        # Verificar API key en header
+        api_key = request.headers.get('X-API-Key')
+        if api_key != API_KEY:
+            return jsonify({'error': 'Invalid or missing API key'}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+# Aplicar a endpoints (opcional - descomentar para activar)
+# @app.route('/api/ticker/<ticker>')
+# @require_api_key
+# @limiter.limit("10 per minute")
