@@ -1,5 +1,3 @@
-from dotenv import load_dotenv
-load_dotenv()
 """
 SignalIQ API - Optimizado con Caché y Mínimo Consumo de APIs
 """
@@ -10,24 +8,13 @@ import random
 from datetime import datetime, timedelta
 from threading import Lock
 
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import yfinance as yf
 import requests
 import numpy as np
 # ⭐ IMPORTAR EL PIPELINE DE NOTICIAS REALES
-# Try relative import first (when imported as module)
-try:
-    from .news_pipeline import process_news_for_ticker
-except ImportError:
-    # Fallback to absolute import (when run as script)
-    from news_pipeline import process_news_for_ticker
-
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+from .news_pipeline import process_news_for_ticker
 
 # ============================================================
 # CONFIGURACIÓN
@@ -80,52 +67,83 @@ def set_cached(key, value, cache_type='ticker'):
 # ============================================================
 
 def get_price(ticker):
+    """
+    Obtiene el precio actual del ticker.
+
+    Contrato:
+        return (price, source)
+
+    source puede ser:
+        cache
+        alpha_vantage
+        twelve_data
+        yahoo
+        fallback
+    """
+    ticker = ticker.strip().upper()
     cache_key = f'price_{ticker}'
+
     cached = get_cached(cache_key, 'price')
     if cached is not None:
-        return cached
-    
+        return cached, "cache"
+
     # 1. Alpha Vantage
     if ALPHA_VANTAGE_API_KEY:
         try:
-            url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={ALPHA_VANTAGE_API_KEY}"
+            url = (
+                f"https://www.alphavantage.co/query"
+                f"?function=GLOBAL_QUOTE"
+                f"&symbol={ticker}"
+                f"&apikey={ALPHA_VANTAGE_API_KEY}"
+            )
             response = requests.get(url, timeout=5)
             data = response.json()
+
             if 'Global Quote' in data and '05. price' in data['Global Quote']:
                 price = float(data['Global Quote']['05. price'])
                 set_cached(cache_key, price, 'price')
-                return price, "alphavantage"
+                return price, "alpha_vantage"
+
         except Exception as e:
-                logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
-    
+            logger.warning(f"Alpha Vantage precio falló para {ticker}: {e}")
+
     # 2. Twelve Data
     if TWELVE_DATA_API_KEY:
         try:
-            url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={TWELVE_DATA_API_KEY}"
-            response = requests.get(url, timeout=5)
+            url = "https://api.twelvedata.com/price"
+            params = {
+                "symbol": ticker,
+                "apikey": TWELVE_DATA_API_KEY
+            }
+
+            response = requests.get(url, params=params, timeout=5)
             data = response.json()
+
             if 'price' in data and data['price'] is not None:
                 price = float(data['price'])
                 set_cached(cache_key, price, 'price')
-                return price, "alphavantage"
+                return price, "twelve_data"
+
         except Exception as e:
-                logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
-    
+            logger.warning(f"Twelve Data precio falló para {ticker}: {e}")
+
     # 3. Yahoo Finance
     try:
         stock = yf.Ticker(ticker)
         hist = stock.history(period="2d")
+
         if not hist.empty:
             price = float(hist['Close'].iloc[-1])
             set_cached(cache_key, price, 'price')
-            return price, "alphavantage"
+            return price, "yahoo"
+
     except Exception as e:
-            logger.warning(f"Alpha Vantage falló para {ticker}: {str(e)}", exc_info=True)
-    
+        logger.warning(f"Yahoo Finance precio falló para {ticker}: {e}")
+
     # 4. Fallback
     price = FALLBACK_PRICES.get(ticker, 100.0)
     set_cached(cache_key, price, 'price')
-    return price, "alphavantage"
+    return price, "fallback"
 
 # ============================================================
 # HISTORIAL
@@ -133,56 +151,120 @@ def get_price(ticker):
 
 def get_price_history(ticker, days=30):
     """
-    Obtiene historial de precios con metadata de calidad.
+    Obtiene historial de precios reales.
+    Prioridad: Twelve Data -> Alpha Vantage -> Yahoo -> fallback simulado.
     """
-    result = {
-        'history': [],
-        'data_quality': 'REAL',
-        'source': None,
-        'simulated': False,
-        'last_updated': None,
-        'warning': None
-    }
-    
-    # Intentar obtener datos reales
+    cache_key = f'history_{ticker}_{days}'
+    cached = get_cached(cache_key, 'history')
+    if cached is not None:
+        return cached
+
+    history = []
+
+    # 1. Twelve Data
+    if TWELVE_DATA_API_KEY:
+        try:
+            url = "https://api.twelvedata.com/time_series"
+            params = {
+                "symbol": ticker,
+                "interval": "1day",
+                "outputsize": days,
+                "apikey": TWELVE_DATA_API_KEY
+            }
+
+            response = requests.get(url, params=params, timeout=10)
+            data = response.json()
+
+            if 'values' in data:
+                values = data['values']
+                history = [
+                    float(item['close'])
+                    for item in reversed(values)
+                    if item.get('close') is not None
+                ]
+
+                if history:
+                    set_cached(cache_key, history, 'history')
+                    logger.info(
+                        f"📊 Twelve Data: historial real para {ticker} "
+                        f"({len(history)} días)"
+                    )
+                    return history
+
+        except Exception as e:
+            logger.warning(f"Twelve Data histórico falló: {e}")
+
+    # 2. Alpha Vantage
+    if ALPHA_VANTAGE_API_KEY:
+        try:
+            url = "https://www.alphavantage.co/query"
+            params = {
+                "function": "TIME_SERIES_DAILY",
+                "symbol": ticker,
+                "outputsize": "compact",
+                "apikey": ALPHA_VANTAGE_API_KEY
+            }
+
+            response = requests.get(url, params=params, timeout=10)
+            data = response.json()
+
+            if 'Time Series (Daily)' in data:
+                time_series = data['Time Series (Daily)']
+                dates = sorted(time_series.keys())[-days:]
+
+                history = [
+                    float(time_series[d]['4. close'])
+                    for d in dates
+                ]
+
+                if history:
+                    set_cached(cache_key, history, 'history')
+                    logger.info(
+                        f"📊 Alpha Vantage: historial real para {ticker} "
+                        f"({len(history)} días)"
+                    )
+                    return history
+
+        except Exception as e:
+            logger.warning(f"Alpha Vantage histórico falló: {e}")
+
+    # 3. Yahoo Finance
     try:
-        ticker_obj = yf.Ticker(ticker)
-        hist = ticker_obj.history(period=f'{days}d')
-        
+        stock = yf.Ticker(ticker)
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        hist = stock.history(start=start_date, end=end_date)
+
         if not hist.empty:
-            result['history'] = [
-                {'date': idx.strftime('%Y-%m-%d'), 'close': float(row['Close'])}
-                for idx, row in hist.iterrows()
-            ]
-            result['source'] = 'yahoo'
-            result['last_updated'] = datetime.now().isoformat()
-            logger.info(f"Historial real obtenido para {ticker} ({len(result['history'])} días)")
-            return result
+            history = [float(p) for p in hist['Close'].values]
+
+            set_cached(cache_key, history, 'history')
+            logger.info(
+                f"📊 Yahoo Finance: historial real para {ticker} "
+                f"({len(history)} días)"
+            )
+            return history
+
     except Exception as e:
-        logger.warning(f"No se pudo obtener historial real para {ticker}: {str(e)}")
-    
-    # Generar datos simulados (con etiqueta)
-    current_price = get_current_price(ticker)
-    if current_price is None:
-        current_price = FALLBACK_PRICES.get(ticker, 100.0)
-    
-    # Simulación conservadora
-    result['history'] = []
+        logger.warning(f"Yahoo Finance histórico falló: {e}")
+
+    # 4. Fallback
+    logger.warning(f"⚠️ Usando historial simulado para {ticker}")
+
+    base_price = FALLBACK_PRICES.get(ticker, 100.0)
+    price = base_price * 0.9
+    trend = random.uniform(-0.005, 0.005)
+
     for i in range(days):
-        price = current_price * (1 + 0.001 * (i - days/2))
-        result['history'].append({
-            'date': (datetime.now() - timedelta(days=days-i)).strftime('%Y-%m-%d'),
-            'close': round(price, 2)
-        })
-    
-    result['data_quality'] = 'SIMULATED'
-    result['source'] = 'fallback'
-    result['simulated'] = True
-    result['warning'] = '⚠️ Historical prices are simulated - use with caution'
-    result['last_updated'] = datetime.now().isoformat()
-    
-    logger.warning(f"Usando datos simulados para {ticker}")
-    return result
+        price = price * (1 + trend + random.uniform(-0.03, 0.03))
+        history.append(round(price, 2))
+
+    set_cached(cache_key, history, 'history')
+    return history
+
+# ============================================================
+# ANÁLISIS NDI - VERSIÓN MEJORADA
+# ============================================================
 
 def classify_regime(ndi):
     if ndi > 2.0:
@@ -210,7 +292,7 @@ def calculate_ndi(ticker):
         return cached
     
     try:
-        price, _ = get_price(ticker)
+        price, price_source = get_price(ticker)
         history = get_price_history(ticker, days=30)
         
         # ⭐ NOTICIAS REALES DEL PIPELINE
@@ -331,13 +413,6 @@ def calculate_ndi(ticker):
 
 app = Flask(__name__)
 
-# Rate limiting
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"]
-)
-
 # ⭐ CONFIGURAR CORS CORRECTAMENTE
 CORS(app, origins=[
     "http://localhost:3000",
@@ -345,7 +420,7 @@ CORS(app, origins=[
     "https://signaliq-zeta-ten.vercel.app",
     "https://signaliq-zeta.vercel.app",
     "https://signaliq-api.onrender.com",
-    "https://signaliq-api.onrender.com"
+    "https://signaliq-l8mi.onrender.com"
 ])
 
 @app.route('/health')
@@ -357,7 +432,6 @@ def health():
         'timestamp': datetime.now().isoformat()
     })
 
-@limiter.limit("10 per minute")
 @app.route('/api/ticker/<ticker>')
 def get_ticker(ticker):
     ticker = ticker.strip().upper()
@@ -367,7 +441,6 @@ def get_ticker(ticker):
     data = calculate_ndi(ticker)
     return jsonify(data)
 
-@limiter.limit("20 per minute")
 @app.route('/api/signals-live')
 def signals_live():
     tickers_param = request.args.get('tickers', '')
@@ -390,7 +463,6 @@ def signals_live():
         'timestamp': datetime.now().isoformat()
     })
 
-@limiter.limit("30 per minute")
 @app.route('/api/tickers')
 def get_tickers():
     return jsonify({'tickers': TICKERS, 'count': len(TICKERS)})
@@ -411,106 +483,83 @@ def root():
         }
     })
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    logger.info("=" * 50)
-    logger.info("🚀 SignalIQ API v6.1 - Con price_history SIEMPRE")
-    logger.info(f"📊 Puerto: {port}")
-    logger.info(f"📊 Cache TTL: {CACHE_TTL}")
-    logger.info(f"📊 Alpha Vantage: {'✅' if ALPHA_VANTAGE_API_KEY else '❌'}")
-    logger.info(f"📊 Twelve Data: {'✅' if TWELVE_DATA_API_KEY else '❌'}")
-    logger.info("=" * 50)
-    app.run(host='0.0.0.0', port=port, debug=False)
-@limiter.limit("30 per minute")
+
+# ============================================================
+# ARRANQUE DEL SERVIDOR
+# ============================================================
+
+# ============================================================
+# FUNCIONES PARA ENDPOINTS
+# ============================================================
+
+def get_ticker_data(ticker):
+    """Obtiene datos completos de un ticker para /api/signals-intel."""
+    try:
+        data = calculate_ndi(ticker)
+        if not data:
+            return None
+        return data
+    except Exception as e:
+        logger.error(f"Error en get_ticker_data para {ticker}: {e}")
+        return None
+
+# ============================================================
+# ENDPOINTS
+# ============================================================
+
 @app.route('/api/prices', methods=['GET'])
 def get_all_prices():
-    """
-    Return current prices for all tracked tickers.
-    Used by frontend yahoo-finance-service.ts
-    """
+    """Return current prices for all tracked tickers."""
+    logger.info("📊 /api/prices: iniciando")
+    
     tickers = ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META', 'AMD', 'AMZN', 'JPM', 'KO']
     result = {}
     
     for ticker in tickers:
         try:
+            logger.info(f"  🔍 Obteniendo precio para {ticker}")
             price, source = get_price(ticker)
             if price:
-                result[ticker] = {
-                    'price': float(price),
-                    'source': source,
-                    'timestamp': datetime.now().isoformat()
-                }
+                result[ticker] = {'price': float(price), 'source': source}
+                logger.info(f"  ✅ {ticker}: {price} ({source})")
             else:
-                result[ticker] = {
-                    'price': None,
-                    'source': 'none',
-                    'error': 'No price available'
-                }
+                result[ticker] = {'error': 'No price available'}
+                logger.warning(f"  ⚠️ {ticker}: sin precio")
         except Exception as e:
-            logger.warning(f"Error getting price for {ticker}: {str(e)}")
-            result[ticker] = {
-                'price': None,
-                'source': 'error',
-                'error': str(e)
-            }
+            result[ticker] = {'error': str(e)}
+            logger.error(f"  ❌ {ticker}: {e}")
     
+    logger.info("📊 /api/prices: completado")
     return jsonify(result)
 
-@limiter.limit("20 per minute")
 @app.route('/api/signals-intel', methods=['GET'])
 def get_signals_intel():
-    """
-    Return comprehensive signals for frontend.
-    Used by ExpandedRow.tsx
-    """
+    """Return comprehensive signals for frontend."""
     ticker = request.args.get('ticker')
-    
     if ticker:
-        # Single ticker
         data = get_ticker_data(ticker)
         if data:
             return jsonify(data)
         return jsonify({'error': f'Ticker {ticker} not found'}), 404
     
-    # All tickers
     tickers = ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META', 'AMD', 'AMZN', 'JPM', 'KO']
     results = {}
-    
     for t in tickers:
         try:
             data = get_ticker_data(t)
             if data:
                 results[t] = data
         except Exception as e:
-            logger.warning(f"Error getting signals for {t}: {str(e)}")
             results[t] = {'error': str(e)}
-    
     return jsonify(results)
 
-# ============================================
-# Authentication (optional)
-# ============================================
-
-API_KEY = os.environ.get('API_KEY')
-
-def require_api_key(f):
-    """Decorator to optionally require API key."""
-    from functools import wraps
-    
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        # Si no hay API_KEY configurada, permitir todo
-        if not API_KEY:
-            return f(*args, **kwargs)
-        
-        # Verificar API key en header
-        api_key = request.headers.get('X-API-Key')
-        if api_key != API_KEY:
-            return jsonify({'error': 'Invalid or missing API key'}), 401
-        return f(*args, **kwargs)
-    return decorated
-
-# Aplicar a endpoints (opcional - descomentar para activar)
-# @app.route('/api/ticker/<ticker>')
-# @require_api_key
-# @limiter.limit("10 per minute")
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 10000))
+    logger.info("=" * 50)
+    logger.info("🚀 SignalIQ API v6.2 - Con price_history SIEMPRE")
+    logger.info(f"📊 Puerto: {port}")
+    logger.info(f"📊 Cache TTL: {CACHE_TTL}")
+    logger.info(f"📊 Alpha Vantage: {'✅' if ALPHA_VANTAGE_API_KEY else '❌'}")
+    logger.info(f"📊 Twelve Data: {'✅' if TWELVE_DATA_API_KEY else '❌'}")
+    logger.info("=" * 50)
+    app.run(host='0.0.0.0', port=port, debug=False)
