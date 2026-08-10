@@ -16,7 +16,11 @@ import yfinance as yf
 import requests
 import numpy as np
 # ⭐ IMPORTAR EL PIPELINE DE NOTICIAS REALES
-from .news_pipeline import process_news_for_ticker
+# Import news_pipeline - absoluto para Render
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from news_pipeline import process_news_for_ticker
 
 # ============================================================
 # CONFIGURACIÓN
