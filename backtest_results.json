@@ -1,0 +1,59 @@
+{
+  "timestamp": "2026-08-10T17:10:37.088158",
+  "results": [
+    {
+      "ticker": "NVDA",
+      "price": 217.55,
+      "sentiment": 0.084,
+      "momentum": 0.104,
+      "ndi": -0.06,
+      "regime": "NEUTRAL",
+      "confidence": 80
+    },
+    {
+      "ticker": "AAPL",
+      "price": 308.26,
+      "sentiment": 0.063,
+      "momentum": -0.094,
+      "ndi": 0.47,
+      "regime": "NEUTRAL",
+      "confidence": 80
+    },
+    {
+      "ticker": "MSFT",
+      "price": 506.06,
+      "sentiment": 0.056,
+      "momentum": 0.287,
+      "ndi": -0.692,
+      "regime": "ALIGNED",
+      "confidence": 95
+    },
+    {
+      "ticker": "TSLA",
+      "price": 330.88,
+      "sentiment": -0.021,
+      "momentum": 0.076,
+      "ndi": -0.291,
+      "regime": "NEUTRAL",
+      "confidence": 80
+    },
+    {
+      "ticker": "GOOGL",
+      "price": 357.52,
+      "sentiment": 0.077,
+      "momentum": 0.071,
+      "ndi": 0.016,
+      "regime": "NEUTRAL",
+      "confidence": 80
+    },
+    {
+      "ticker": "META",
+      "price": 594.92,
+      "sentiment": 0.126,
+      "momentum": 0.003,
+      "ndi": 0.372,
+      "regime": "NEUTRAL",
+      "confidence": 80
+    }
+  ]
+}
