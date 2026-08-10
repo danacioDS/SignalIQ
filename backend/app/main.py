@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()
 """
 SignalIQ API - Optimizado con Caché y Mínimo Consumo de APIs
 """
@@ -155,6 +157,7 @@ def get_price(ticker):
 # HISTORIAL
 # ============================================================
 
+
 def get_price_history(ticker, days=30):
     """
     Obtiene historial de precios reales.
@@ -236,14 +239,11 @@ def get_price_history(ticker, days=30):
 
     # 3. Yahoo Finance
     try:
-        stock = yf.Ticker(ticker)
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
-        hist = stock.history(start=start_date, end=end_date)
+        ticker_obj = yf.Ticker(ticker)
+        hist = ticker_obj.history(period=f'{days}d')
 
         if not hist.empty:
-            history = [float(p) for p in hist['Close'].values]
-
+            history = [float(row['Close']) for _, row in hist.iterrows()]
             set_cached(cache_key, history, 'history')
             logger.info(
                 f"📊 Yahoo Finance: historial real para {ticker} "
@@ -254,23 +254,20 @@ def get_price_history(ticker, days=30):
     except Exception as e:
         logger.warning(f"Yahoo Finance histórico falló: {e}")
 
-    # 4. Fallback
-    logger.warning(f"⚠️ Usando historial simulado para {ticker}")
+    # 4. Fallback simulado (con advertencia)
+    current_price, _ = get_price(ticker)
+    if current_price is None:
+        current_price = FALLBACK_PRICES.get(ticker, 100.0)
 
-    base_price = FALLBACK_PRICES.get(ticker, 100.0)
-    price = base_price * 0.9
-    trend = random.uniform(-0.005, 0.005)
-
+    history = []
     for i in range(days):
-        price = price * (1 + trend + random.uniform(-0.03, 0.03))
+        price = current_price * (1 + 0.001 * (i - days/2))
         history.append(round(price, 2))
 
     set_cached(cache_key, history, 'history')
+    logger.warning(f"⚠️ Usando historial SIMULADO para {ticker}")
     return history
 
-# ============================================================
-# ANÁLISIS NDI - VERSIÓN MEJORADA
-# ============================================================
 
 def classify_regime(ndi):
     if ndi > 2.0:
@@ -299,7 +296,12 @@ def calculate_ndi(ticker):
     
     try:
         price, price_source = get_price(ticker)
-        history = get_price_history(ticker, days=30)
+                # get_price_history devuelve lista de precios o dict con 'history'
+        history_result = get_price_history(ticker, days=30)
+        if isinstance(history_result, dict):
+            history = history_result.get('history', [])
+        else:
+            history = history_result
         
         # ⭐ NOTICIAS REALES DEL PIPELINE
         news_data = process_news_for_ticker(ticker)
