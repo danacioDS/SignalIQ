@@ -34,20 +34,19 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({ ndi = 0, size = 
   const needleX = centerX + needleLength * Math.cos(rad);
   const needleY = centerY + needleLength * Math.sin(rad);
 
-  // Colores del arco (degradado de 7 colores)
-  
+  // ✅ PALETA DE COLORES UNIFICADA (7 colores - coincide con Dashboard y NDIGauge)
   const arcColors = [
-    { stop: 0, color: '#1a237e' },    // -3.0: Extreme Undervalued
-    { stop: 0.17, color: '#1565c0' }, // -2.0: Strong Undervalued
-    { stop: 0.33, color: '#42a5f5' }, // -1.5: Aligned
-    { stop: 0.50, color: '#66bb6a' }, // -0.5: Stable
-    { stop: 0.67, color: '#ffee58' }, // 0.5: Watching
-    { stop: 0.83, color: '#ff9800' }, // 1.5: Overheating
-    { stop: 1.0, color: '#d32f2f' },  // 2.0: Extreme Overheating
+    { stop: 0.00, color: '#6b21a8' },  // -3.0: Capitulation 💎
+    { stop: 0.17, color: '#7C4DFF' },  // -2.0: Strong Undervalued 🟣
+    { stop: 0.33, color: '#3b82f6' },  // -1.5: Buy Opportunity 🔵
+    { stop: 0.50, color: '#22c55e' },  // -0.5: Equilibrium 🟢
+    { stop: 0.67, color: '#eab308' },  // 0.5: Watching 🟡
+    { stop: 0.83, color: '#f97316' },  // 1.5: Overheating 🟠
+    { stop: 1.00, color: '#ef4444' },  // 2.0: Extreme Overheating 🔴
   ];
 
-  // Mapear NDI a posición en el arco (de -3 a +3)
-  const ndiPos = Math.max(0, Math.min(1, (safeNdi + 5) / 6));
+  // ✅ Mapear NDI a posición en el arco (de -3 a +3)
+  const ndiPos = Math.max(0, Math.min(1, (safeNdi + 3) / 6));
 
   return (
     <div style={{ 
@@ -61,24 +60,8 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({ ndi = 0, size = 
       boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
     }}>
       <svg width={size} height={size * 0.85} viewBox={`0 0 ${size} ${size * 0.85}`}>
-        {/* Fondo del arco */}
-
-        <circle
-          cx={centerX}
-          cy={centerY}
-          r={radius}
-          fill="none"
-          stroke="url(#arcGradient)"
-          strokeWidth={strokeWidth}
-          strokeDasharray={`${ndiPos * 2 * Math.PI * radius} ${(1 - ndiPos) * 2 * Math.PI * radius}`}
-          strokeDashoffset={0}
-          transform={`rotate(-90 ${centerX} ${centerY})`}
-          strokeLinecap="round"
-          opacity={0.95}
-        />
-
-        {/* Degradado del arco */}
         <defs>
+          {/* Degradado del arco con colores unificados */}
           <linearGradient id="arcGradient" x1="0%" y1="0%" x2="100%" y2="0%">
             {arcColors.map(({ stop, color }) => (
               <stop key={stop} offset={`${stop * 100}%`} stopColor={color} />
@@ -91,7 +74,18 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({ ndi = 0, size = 
           </filter>
         </defs>
 
-        {/* Arco con degradado */}
+        {/* Arco completo (fondo) */}
+        <circle
+          cx={centerX}
+          cy={centerY}
+          r={radius}
+          fill="none"
+          stroke="rgba(255,255,255,0.05)"
+          strokeWidth={strokeWidth + 4}
+          strokeLinecap="round"
+        />
+
+        {/* Arco con degradado (relleno según NDI) */}
         <circle
           cx={centerX}
           cy={centerY}
@@ -207,15 +201,15 @@ export const NDIVelocimeter: React.FC<NDIVelocimeterProps> = ({ ndi = 0, size = 
         gap: '14px', 
         marginTop: '8px',
         padding: '10px 20px',
-        backgroundColor: C.accentBg,
+        backgroundColor: `${color}15`,
         borderRadius: '12px',
-        border: `1px solid ${C.cardBorder}`,
+        border: `1px solid ${color}25`,
         width: '100%',
         justifyContent: 'center',
       }}>
         <span style={{ fontSize: '28px' }}>{icon}</span>
         <div>
-          <div style={{ color: C.text, fontSize: '18px', fontWeight: 'bold' }}>
+          <div style={{ color: color, fontSize: '18px', fontWeight: 'bold' }}>
             {label}
           </div>
           <div style={{ color: C.muted, fontSize: '13px' }}>
