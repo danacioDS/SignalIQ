@@ -25,14 +25,15 @@ export const NDIGauge: React.FC<NDIGaugeProps> = ({ ndi = 0, size = 300 }) => {
   const needleX = centerX + needleLength * Math.cos(rad);
   const needleY = centerY + needleLength * Math.sin(rad);
 
+
   const getRegimeInfo = (value: number) => {
-    if (value > 2.0) return { color: '#ef4444', label: 'Extreme Overheating', icon: '🔴' };
-    if (value > 1.5) return { color: '#f97316', label: 'Overheating', icon: '🟠' };
-    if (value > 0.5) return { color: '#eab308', label: 'Watching', icon: '🟡' };
-    if (value > -0.5) return { color: '#22c55e', label: 'Equilibrium', icon: '🟢' };
-    if (value > -1.5) return { color: '#3b82f6', label: 'Buy Opportunity', icon: '🔵' };
-    if (value > -2.0) return { color: '#3b4ef6fa', label: 'Buy Opportunity', icon: '🔵' };
-    return { color: '#6b21a8', label: 'Capitulation', icon: '💎' };
+  if (value > 2.0) return { color: '#ef4444', label: 'Extreme Overheating', icon: '🔴' };
+  if (value > 1.5) return { color: '#f97316', label: 'Overheating', icon: '🟠' };
+  if (value > 0.5) return { color: '#eab308', label: 'Watching', icon: '🟡' };
+  if (value > -0.5) return { color: '#22c55e', label: 'Equilibrium', icon: '🟢' };
+  if (value > -1.5) return { color: '#3b82f6', label: 'Buy Opportunity', icon: '🔵' };
+  if (value > -2.0) return { color: '#7C4DFF', label: 'Strong Undervalued', icon: '🟣' };
+  return { color: '#6b21a8', label: 'Capitulation', icon: '💎' };
   };
 
   const regime = getRegimeInfo(safeNdi);

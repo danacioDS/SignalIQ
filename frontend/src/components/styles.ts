@@ -20,6 +20,7 @@ export const C = {
   // Colores de régimen
   red: '#ef4444',
   orange: '#f97316',
+  purple: "#7C4DFF",
   yellow: '#eab308',
   green: '#22c55e',
   blue: '#3b82f6',

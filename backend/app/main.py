@@ -561,6 +561,132 @@ def get_signals_intel():
             results[t] = {'error': str(e)}
     return jsonify(results)
 
+
+@app.route('/api/market-intelligence/analysis', methods=['POST'])
+def get_mi_analysis():
+    """Genera análisis de 5 líneas para Market Intelligence"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        ticker = data.get('ticker')
+        sentiment = data.get('sentiment', 0.0)
+        momentum = data.get('momentum', 0.0)
+        ndi = data.get('ndi', 0.0)
+        regime = data.get('regime', 'UNKNOWN')
+        news = data.get('news', [])
+        
+        if not ticker:
+            return jsonify({'error': 'Ticker is required'}), 400
+        
+        from layers.llm_router import analyze_market_intelligence
+        analysis = analyze_market_intelligence(
+            ticker=ticker,
+            sentiment=sentiment,
+            momentum=momentum,
+            ndi=ndi,
+            regime=regime,
+            news=news
+        )
+        
+        return jsonify({
+            'ticker': ticker,
+            'analysis': analysis
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in MI analysis: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/metrics', methods=['GET'])
+def get_market_metrics():
+    """Return aggregated NDI market intelligence metrics."""
+    import numpy as np
+    
+    cache_key = 'market_metrics'
+    cached = get_cached(cache_key, 'metrics')
+    if cached is not None:
+        return jsonify(cached)
+    
+    tickers = ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META']
+    results = []
+    
+    for ticker in tickers:
+        try:
+            data = calculate_ndi(ticker)
+            if data and isinstance(data, dict):
+                results.append({
+                    'ticker': ticker,
+                    'price': data.get('price'),
+                    'sentiment': data.get('sentiment'),
+                    'momentum': data.get('momentum'),
+                    'ndi': data.get('ndi'),
+                    'regime': data.get('regime'),
+                    'confidence': data.get('confidence')
+                })
+        except Exception as e:
+            logger.error(f"Error en {ticker}: {e}")
+    
+    # Calcular métricas
+    ndi_values = [r['ndi'] for r in results if r.get('ndi') is not None]
+    sentiment_values = [r['sentiment'] for r in results if r.get('sentiment') is not None]
+    momentum_values = [r['momentum'] for r in results if r.get('momentum') is not None]
+    confidence_values = [r['confidence'] for r in results if r.get('confidence') is not None]
+    
+    # Correlaciones
+    sentiment_ndi_corr = 0
+    if len(sentiment_values) > 1 and len(ndi_values) > 1 and len(sentiment_values) == len(ndi_values):
+        sentiment_ndi_corr = float(np.corrcoef(sentiment_values, ndi_values)[0, 1])
+    
+    momentum_ndi_corr = 0
+    if len(momentum_values) > 1 and len(ndi_values) > 1 and len(momentum_values) == len(ndi_values):
+        momentum_ndi_corr = float(np.corrcoef(momentum_values, ndi_values)[0, 1])
+    
+    # Regímenes
+    regime_counts = {
+        'NEUTRAL': len([r for r in results if r.get('regime') == 'NEUTRAL']),
+        'ALIGNED': len([r for r in results if r.get('regime') == 'ALIGNED']),
+        'WATCHING': len([r for r in results if r.get('regime') == 'WATCHING']),
+        'OVERHEATING': len([r for r in results if r.get('regime') == 'OVERHEATING']),
+        'CAPITULATION': len([r for r in results if r.get('regime') == 'CAPITULATION'])
+    }
+    
+    # Market alignment
+    aligned = 0
+    for r in results:
+        s = r.get('sentiment', 0)
+        m = r.get('momentum', 0)
+        if (s > 0 and m > 0) or (s < 0 and m < 0):
+            aligned += 1
+    market_alignment = round((aligned / len(results)) * 100, 1) if results else 0
+    
+    metrics = {
+        'ndi_mean': float(np.mean(ndi_values)) if ndi_values else 0,
+        'ndi_std': float(np.std(ndi_values)) if ndi_values else 0,
+        'ndi_range': float(np.max(ndi_values) - np.min(ndi_values)) if ndi_values else 0,
+        'sentiment_ndi_corr': round(sentiment_ndi_corr, 4) if sentiment_ndi_corr else 0,
+        'momentum_ndi_corr': round(momentum_ndi_corr, 4) if momentum_ndi_corr else 0,
+        'confidence_mean': float(np.mean(confidence_values)) if confidence_values else 0,
+        'regime_counts': regime_counts,
+        'market_alignment': market_alignment
+    }
+    
+    response = {
+        'generated_at': datetime.now().isoformat(),
+        'source': 'cache',
+        'tickers': results,
+        'metrics': metrics
+    }
+    
+    # Reemplazar NaN por None (válido en JSON)
+    for key, value in metrics.items():
+        if isinstance(value, float) and np.isnan(value):
+            metrics[key] = None
+    
+    set_cached(cache_key, response, 'metrics')
+    logger.info(f"📊 /api/metrics: {len(results)} tickers procesados")
+    return jsonify(response)
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     logger.info("=" * 50)
