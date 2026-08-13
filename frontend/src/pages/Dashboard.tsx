@@ -1,3 +1,4 @@
+import { getCompanyName } from "../constants/companyNames";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { C } from '../components/styles';
 import { NDIGauge } from '../components/NDIGauge';
@@ -70,14 +71,25 @@ const defaultTickers = [
 
 // ==================== COMPONENTE NDI FRAMEWORK ====================
 const NDIFrameworkTable: React.FC<{ ndi: number; regime: string }> = ({ ndi, regime }) => {
+  // Definición de colores por régimen (coincide con NDIGauge y Dashboard)
+  const regimeColors: Record<string, string> = {
+    extreme_overheating: '#ef4444',
+    overheating: '#f97316',
+    watching: '#eab308',
+    stable: '#22c55e',
+    aligned: '#3b82f6',
+    strong_undervalued: '#7C4DFF',
+    extreme_undervalued: '#6b21a8',
+  };
+
   const regimes = [
     { economics: 'Euphoric market, price not rising', ndiRange: 'NDI > 2.0', action: '🔴 SELL', key: 'extreme_overheating' },
     { economics: 'Strong optimism, momentum weakening', ndiRange: '1.5 < NDI ≤ 2.0', action: '🟠 REDUCE', key: 'overheating' },
     { economics: 'Moderate divergence', ndiRange: '0.5 < NDI ≤ 1.5', action: '🟡 MONITOR', key: 'watching' },
     { economics: 'Perfect equilibrium', ndiRange: '-0.5 < NDI ≤ 0.5', action: '🟢 HOLD', key: 'stable' },
     { economics: 'Unjustified pessimism', ndiRange: '-1.5 < NDI ≤ -0.5', action: '🔵 BUY', key: 'aligned' },
-    { economics: 'Significant oversold', ndiRange: '-2.0 < NDI ≤ -1.5', action: '🔵 STRONG BUY', key: 'strong_undervalued' },
-    { economics: 'Capitulation', ndiRange: 'NDI ≤ -2.0', action: '🔵 ACCUMULATE', key: 'extreme_undervalued' },
+    { economics: 'Significant oversold', ndiRange: '-2.0 < NDI ≤ -1.5', action: '🟣 STRONG BUY', key: 'strong_undervalued' },
+    { economics: 'Capitulation', ndiRange: 'NDI ≤ -2.0', action: '💎 ACCUMULATE', key: 'extreme_undervalued' },
   ];
 
   const getRowStyle = (key: string) => {
@@ -90,10 +102,13 @@ const NDIFrameworkTable: React.FC<{ ndi: number; regime: string }> = ({ ndi, reg
     else if (key === 'strong_undervalued' && ndi > -2.0 && ndi <= -1.5) isActive = true;
     else if (key === 'extreme_undervalued' && ndi <= -2.0) isActive = true;
     
+    const color = regimeColors[key] || '#888888';
+    
     return {
-      backgroundColor: isActive ? 'rgba(108, 99, 255, 0.15)' : 'transparent',
-      borderLeft: isActive ? `3px solid ${C.accent}` : '3px solid transparent',
+      backgroundColor: isActive ? `${color}20` : 'transparent',
+      borderLeft: isActive ? `3px solid ${color}` : '3px solid transparent',
       fontWeight: isActive ? 'bold' : 'normal',
+      color: isActive ? color : C.text,
     };
   };
 
@@ -127,13 +142,13 @@ const NDIFrameworkTable: React.FC<{ ndi: number; regime: string }> = ({ ndi, reg
           const style = getRowStyle(item.key);
           return (
             <React.Fragment key={item.key}>
-              <div style={{ ...style, padding: '6px 8px', color: C.text }}>
+              <div style={{ ...style, padding: '6px 8px' }}>
                 {item.economics}
               </div>
-              <div style={{ ...style, padding: '6px 8px', color: C.text, fontFamily: 'monospace' }}>
+              <div style={{ ...style, padding: '6px 8px', fontFamily: 'monospace' }}>
                 {item.ndiRange}
               </div>
-              <div style={{ ...style, padding: '6px 8px', color: C.text }}>
+              <div style={{ ...style, padding: '6px 8px' }}>
                 {item.action}
               </div>
             </React.Fragment>
@@ -206,7 +221,7 @@ export default function Dashboard() {
           sector: sectorMap[item.ticker] || 'Other',
           confidence: item.confidence || 70,
           regime: item.regime || 'No Data',
-          companyName: item.ticker,
+          companyName: item.companyName || getCompanyName(item.ticker),
           price_history: item.price_history || [], // ⭐ Guardar price_history
           headlines: item.headlines || [],
           news_count: item.news_count || 0,
