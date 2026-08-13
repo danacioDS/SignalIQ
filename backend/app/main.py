@@ -592,23 +592,21 @@ def signals_live():
                 data = calculate_ndi(ticker)
                 if data:
                     results.append(data)
-                else:
-                    # Si no hay datos, devolver un placeholder
-                    results.append({
-                        'ticker': ticker,
-                        'price': None,
-                        'current_price': None,
-                        'error': 'No data available',
-                        'ndi': None
-                    })
             except Exception as e:
                 logger.error(f"Error en signals_live para {ticker}: {e}")
+                # Añadir placeholder para tickers con error
                 results.append({
                     'ticker': ticker,
-                    'price': None,
-                    'current_price': None,
-                    'error': str(e),
-                    'ndi': None
+                    'price': 0,
+                    'current_price': 0,
+                    'ndi': 0,
+                    'sentiment': 0,
+                    'momentum': 0,
+                    'regime': 'NEUTRAL',
+                    'signal': 'HOLD',
+                    'color': 'yellow',
+                    'confidence': 50,
+                    'price_history': []
                 })
     
     return jsonify({
