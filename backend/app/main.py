@@ -593,6 +593,8 @@ def get_ticker(ticker):
         return jsonify({'error': f'Ticker {ticker} no soportado', 'supported': TICKERS}), 400
     
     data = calculate_ndi(ticker)
+    if data:
+        data['companyName'] = COMPANY_NAMES.get(ticker, ticker)
     return jsonify(data)
 
 @app.route('/api/signals-live')
@@ -609,12 +611,14 @@ def signals_live():
             try:
                 data = calculate_ndi(ticker)
                 if data:
+                    data['companyName'] = COMPANY_NAMES.get(ticker, ticker)
                     results.append(data)
             except Exception as e:
                 logger.error(f"Error en signals_live para {ticker}: {e}")
                 # Añadir placeholder para tickers con error
                 results.append({
                     'ticker': ticker,
+                    'companyName': COMPANY_NAMES.get(ticker, ticker),
                     'price': 0,
                     'current_price': 0,
                     'ndi': 0,
