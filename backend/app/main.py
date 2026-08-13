@@ -79,81 +79,210 @@ def set_cached(key, value, cache_type='ticker'):
 
 def get_price(ticker):
     """
-    Obtiene el precio actual del ticker usando Twelve Data primero.
+    Obtiene el precio actual del ticker.
+
+    Prioridad:
+    1. Caché
+    2. Twelve Data
+    3. Alpha Vantage
+    4. Yahoo Finance
+    5. Fallback estático (último recurso)
     """
     ticker = ticker.strip().upper()
     cache_key = f'price_{ticker}'
 
-    # Verificar caché
+    # ========================================================
+    # CACHÉ
+    # ========================================================
     cached = get_cached(cache_key, 'price')
     if cached is not None:
         return cached, "cache"
 
-    # 1. Twelve Data
-    try:
-        url = f"https://api.twelvedata.com/price?symbol={ticker}&apikey={TWELVE_DATA_API_KEY}"
-        response = requests.get(url, timeout=5)
-        logger.info(f"Twelve Data response status: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            price = data.get('price')
-            if price is not None:
-                price = float(price)
-                set_cached(cache_key, price, 'price')
-                logger.info(f"💰 Twelve Data: {ticker} = ${price:.2f}")
-                return price, "twelve_data"
-        else:
-            logger.warning(f"Twelve Data status {response.status_code}: {response.text[:200]}")
-    except Exception as e:
-        logger.warning(f"⚠️ Twelve Data falló para {ticker}: {type(e).__name__}: {e}")
-        logger.info(f"🔄 Intentando Alpha Vantage como backup para {ticker}...")
-
-    # 2. Alpha Vantage (backup)
-    if ALPHA_VANTAGE_API_KEY:
+    # ========================================================
+    # 1. TWELVE DATA - FUENTE PRIMARIA
+    # ========================================================
+    if TWELVE_DATA_API_KEY:
         try:
-            url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={ALPHA_VANTAGE_API_KEY}"
-            response = requests.get(url, timeout=5)
-            logger.info(f"Alpha Vantage response status: {response.status_code}")
-            
+            url = "https://api.twelvedata.com/price"
+            params = {
+                "symbol": ticker,
+                "apikey": TWELVE_DATA_API_KEY
+            }
+
+            response = requests.get(url, params=params, timeout=5)
+
+            logger.info(
+                f"Twelve Data status={response.status_code} ticker={ticker}"
+            )
+
             if response.status_code == 200:
                 data = response.json()
-                logger.info(f"Alpha Vantage data keys: {list(data.keys())}")
-                
-                if 'Global Quote' in data and '05. price' in data['Global Quote']:
-                    price = float(data['Global Quote']['05. price'])
-                    set_cached(cache_key, price, 'price')
-                    logger.info(f"🔄 Alpha Vantage backup: {ticker} = ${price:.2f}")
-                    return price, "alpha_vantage"
-                elif 'Note' in data:
-                    logger.warning(f"⚠️ Alpha Vantage rate limit: {data['Note'][:200]}")
-                elif 'Information' in data:
-                    logger.warning(f"⚠️ Alpha Vantage no disponible: {data['Information'][:200]}")
-                else:
-                    logger.warning(f"⚠️ Alpha Vantage respuesta inesperada: {data}")
-            else:
-                logger.warning(f"Alpha Vantage status {response.status_code}: {response.text[:200]}")
-        except Exception as e:
-            logger.warning(f"Alpha Vantage también falló: {type(e).__name__}: {e}")
-    else:
-        logger.warning("ALPHA_VANTAGE_API_KEY no configurada")
+                raw_price = data.get("price")
 
-    # 3. Yahoo Finance
+                if raw_price is not None:
+                    try:
+                        price = float(raw_price)
+
+                        if np.isfinite(price) and price > 0:
+                            set_cached(cache_key, price, 'price')
+
+                            logger.info(
+                                f"💰 Twelve Data: {ticker} = ${price:.2f}"
+                            )
+
+                            return price, "twelve_data"
+
+                        logger.warning(
+                            f"⚠️ Twelve Data precio inválido para "
+                            f"{ticker}: {raw_price}"
+                        )
+
+                    except (TypeError, ValueError):
+                        logger.warning(
+                            f"⚠️ Twelve Data precio no numérico para "
+                            f"{ticker}: {raw_price}"
+                        )
+                else:
+                    logger.warning(
+                        f"⚠️ Twelve Data no devolvió precio para "
+                        f"{ticker}: {data}"
+                    )
+
+            else:
+                logger.warning(
+                    f"⚠️ Twelve Data HTTP {response.status_code}: "
+                    f"{response.text[:200]}"
+                )
+
+        except Exception as e:
+            logger.warning(
+                f"⚠️ Twelve Data falló para {ticker}: "
+                f"{type(e).__name__}: {e}"
+            )
+    else:
+        logger.warning("⚠️ TWELVE_DATA_API_KEY no configurada")
+
+    # ========================================================
+    # 2. ALPHA VANTAGE - BACKUP
+    # ========================================================
+    if ALPHA_VANTAGE_API_KEY:
+        try:
+            url = "https://www.alphavantage.co/query"
+            params = {
+                "function": "GLOBAL_QUOTE",
+                "symbol": ticker,
+                "apikey": ALPHA_VANTAGE_API_KEY
+            }
+
+            response = requests.get(url, params=params, timeout=5)
+
+            logger.info(
+                f"Alpha Vantage status={response.status_code} "
+                f"ticker={ticker}"
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+
+                if "Note" in data:
+                    logger.warning(
+                        f"⚠️ Alpha Vantage rate limit para {ticker}"
+                    )
+
+                elif "Information" in data:
+                    logger.warning(
+                        f"⚠️ Alpha Vantage no disponible para {ticker}: "
+                        f"{data['Information'][:150]}"
+                    )
+
+                elif (
+                    "Global Quote" in data
+                    and "05. price" in data["Global Quote"]
+                ):
+                    try:
+                        price = float(
+                            data["Global Quote"]["05. price"]
+                        )
+
+                        if np.isfinite(price) and price > 0:
+                            set_cached(cache_key, price, 'price')
+
+                            logger.info(
+                                f"🔄 Alpha Vantage: "
+                                f"{ticker} = ${price:.2f}"
+                            )
+
+                            return price, "alpha_vantage"
+
+                    except (TypeError, ValueError):
+                        logger.warning(
+                            f"⚠️ Alpha Vantage precio inválido "
+                            f"para {ticker}"
+                        )
+
+                else:
+                    logger.warning(
+                        f"⚠️ Alpha Vantage sin precio para {ticker}: "
+                        f"{data}"
+                    )
+
+            else:
+                logger.warning(
+                    f"⚠️ Alpha Vantage HTTP "
+                    f"{response.status_code}"
+                )
+
+        except Exception as e:
+            logger.warning(
+                f"⚠️ Alpha Vantage falló para {ticker}: "
+                f"{type(e).__name__}: {e}"
+            )
+    else:
+        logger.warning(
+            "⚠️ ALPHA_VANTAGE_API_KEY no configurada"
+        )
+
+    # ========================================================
+    # 3. YAHOO FINANCE
+    # ========================================================
     try:
         stock = yf.Ticker(ticker)
         hist = stock.history(period="2d")
-        if not hist.empty:
-            price = float(hist['Close'].iloc[-1])
-            set_cached(cache_key, price, 'price')
-            logger.info(f"🔄 Yahoo Finance backup: {ticker} = ${price:.2f}")
-            return price, "yahoo"
-    except Exception as e:
-        logger.warning(f"Yahoo Finance falló: {e}")
 
-    # 4. Fallback
+        if not hist.empty and "Close" in hist.columns:
+            price = float(hist["Close"].iloc[-1])
+
+            if np.isfinite(price) and price > 0:
+                set_cached(cache_key, price, 'price')
+
+                logger.info(
+                    f"🔄 Yahoo Finance: "
+                    f"{ticker} = ${price:.2f}"
+                )
+
+                return price, "yahoo"
+
+        logger.warning(
+            f"⚠️ Yahoo Finance sin datos para {ticker}"
+        )
+
+    except Exception as e:
+        logger.warning(
+            f"⚠️ Yahoo Finance falló para {ticker}: "
+            f"{type(e).__name__}: {e}"
+        )
+
+    # ========================================================
+    # 4. FALLBACK - ÚLTIMO RECURSO
+    # ========================================================
     price = FALLBACK_PRICES.get(ticker, 100.0)
+
     set_cached(cache_key, price, 'price')
-    logger.warning(f"⚠️ Usando fallback para {ticker}: ${price:.2f}")
+
+    logger.warning(
+        f"🚨 FALLBACK para {ticker}: ${price:.2f}"
+    )
+
     return price, "fallback"
 
 

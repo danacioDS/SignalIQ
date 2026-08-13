@@ -3,10 +3,18 @@
 import os
 from typing import Optional
 from dotenv import load_dotenv
+import hashlib
+from datetime import datetime
 
 # Load .env only if not already loaded (not in test environment)
 if os.environ.get('ENVIRONMENT') != 'test':
     load_dotenv()
+# ============================================================
+# CACHÉ DE LLM
+# ============================================================
+_llm_cache = {}
+_LLM_CACHE_TTL = 600  # 10 minutos
+
 
 class LLMRouter:
     """Intelligent router between multiple LLMs"""
@@ -188,3 +196,72 @@ The Narrative Divergence Index indicates {
 
 # Global instance
 llm_router = LLMRouter()
+
+
+# ============================================================
+# MARKET INTELLIGENCE ANALYSIS CON CACHÉ
+# ============================================================
+def analyze_market_intelligence(ticker: str, sentiment: float, momentum: float, ndi: float, regime: str, news: list) -> dict:
+    """Genera análisis de 5 líneas con caché de 10 minutos"""
+    # Generar clave de caché
+    cache_key = hashlib.md5(f"{ticker}_{ndi:.3f}_{sentiment:.3f}_{momentum:.3f}_{regime}_{len(news)}".encode()).hexdigest()
+    
+    # Verificar caché
+    if cache_key in _llm_cache:
+        data, timestamp = _llm_cache[cache_key]
+        if (datetime.now() - timestamp).total_seconds() < _LLM_CACHE_TTL:
+            return data
+    
+    # Construir prompt
+    news_text = "\n".join([f"- {n[:150]}..." for n in news[:3]]) if news else "- No recent news"
+    prompt = f"""Generate 5-line analysis for {ticker}:
+    Sentiment: {sentiment:.3f}
+    Momentum: {momentum:.3f}
+    NDI: {ndi:.3f}
+    Regime: {regime}
+    News: {news_text}
+    
+    5 lines: Sentiment, Momentum, NDI/Regime, Market Interpretation, Risk/Outlook."""
+    
+    # Usar el router existente
+    if llm_router.primary == "mock":
+        result = {
+            'sentiment': f"{'Positive' if sentiment > 0.05 else 'Negative' if sentiment < -0.05 else 'Neutral'} ({sentiment:.3f})",
+            'momentum': f"{'Strong' if momentum > 0.05 else 'Weak' if momentum < -0.05 else 'Stable'} ({momentum:.3f})",
+            'regime': f"{regime} (NDI: {ndi:.3f})",
+            'interpretation': f"{regime} regime with {'positive' if sentiment > 0.05 else 'negative' if sentiment < -0.05 else 'neutral'} sentiment.",
+            'risk_outlook': f"Key risk: divergence between sentiment and price."
+        }
+    else:
+        try:
+            response = llm_router._call_llm(llm_router.primary, prompt)
+            if response:
+                lines = [l.strip() for l in response.split('\n') if l.strip()]
+                result = {
+                    'sentiment': lines[0] if len(lines) > 0 else 'N/A',
+                    'momentum': lines[1] if len(lines) > 1 else 'N/A',
+                    'regime': lines[2] if len(lines) > 2 else 'N/A',
+                    'interpretation': lines[3] if len(lines) > 3 else 'N/A',
+                    'risk_outlook': lines[4] if len(lines) > 4 else 'N/A'
+                }
+            else:
+                result = {
+                    'sentiment': 'N/A',
+                    'momentum': 'N/A',
+                    'regime': 'N/A',
+                    'interpretation': 'N/A',
+                    'risk_outlook': 'N/A'
+                }
+        except Exception as e:
+            print(f"⚠️ LLM error: {e}")
+            result = {
+                'sentiment': 'N/A',
+                'momentum': 'N/A',
+                'regime': 'N/A',
+                'interpretation': 'N/A',
+                'risk_outlook': 'N/A'
+            }
+    
+    # Guardar en caché
+    _llm_cache[cache_key] = (result, datetime.now())
+    return result

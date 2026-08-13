@@ -1,11 +1,9 @@
-"""
-Pipeline de noticias - Simple e independiente
-"""
+"""Pipeline de noticias con caché de 15 minutos"""
 import feedparser
 import re
 from textblob import TextBlob
+from datetime import datetime, timedelta
 
-# Fuentes RSS (sin depender de otros módulos)
 RSS_FEEDS = [
     'https://news.google.com/rss/search?q={ticker}+stock+when:1d&hl=en-US&gl=US&ceid=US:en',
     'https://news.google.com/rss/search?q={ticker}+earnings+when:1d&hl=en-US&gl=US&ceid=US:en',
@@ -13,92 +11,79 @@ RSS_FEEDS = [
     'https://www.marketwatch.com/rss/topstories',
 ]
 
+_news_cache = {}
+_NEWS_CACHE_TTL = 900  # 15 minutos
+
 def polarity(text):
-    """Análisis de sentimiento simple usando TextBlob"""
     try:
-        blob = TextBlob(text)
-        return blob.sentiment.polarity
+        return TextBlob(text).sentiment.polarity
     except:
         return 0.0
 
 def fetch_news(ticker, max_items=20):
-    """Obtiene noticias relacionadas con un ticker desde múltiples fuentes"""
     headlines = []
     seen = set()
     
     for feed_url in RSS_FEEDS:
         try:
-            # Reemplazar {ticker} con el ticker buscado
             url = feed_url.format(ticker=ticker)
             feed = feedparser.parse(url)
-            
             for entry in feed.entries[:10]:
                 title = entry.title
-                # Verificar que el título contenga el ticker o palabras clave
                 if (ticker.lower() in title.lower() or 
                     any(word in title.lower() for word in ['stock', 'share', 'earnings', 'profit'])):
                     if title not in seen:
                         headlines.append(title)
                         seen.add(title)
-        except Exception as e:
-            print(f"⚠️ Error con feed: {e}")
+        except:
             continue
     
-    # Si no hay noticias, buscar con términos alternativos
     if not headlines:
         try:
-            alt_feeds = [
-                f'https://news.google.com/rss/search?q={ticker}+technology+when:1d&hl=en-US&gl=US&ceid=US:en',
-            ]
-            for feed_url in alt_feeds:
-                url = feed_url.format(ticker=ticker)
-                feed = feedparser.parse(url)
-                for entry in feed.entries[:5]:
-                    title = entry.title
-                    if ticker.lower() in title.lower() and title not in seen:
-                        headlines.append(title)
-                        seen.add(title)
+            alt_url = f'https://news.google.com/rss/search?q={ticker}+technology+when:1d&hl=en-US&gl=US&ceid=US:en'
+            feed = feedparser.parse(alt_url)
+            for entry in feed.entries[:5]:
+                title = entry.title
+                if ticker.lower() in title.lower() and title not in seen:
+                    headlines.append(title)
+                    seen.add(title)
         except:
             pass
     
     return headlines[:max_items]
 
 def process_news_for_ticker(ticker):
-    """Procesa noticias y calcula sentimiento"""
+    """Procesa noticias con caché de 15 minutos"""
+    if ticker in _news_cache:
+        data, timestamp = _news_cache[ticker]
+        if (datetime.now() - timestamp).total_seconds() < _NEWS_CACHE_TTL:
+            return data
+    
     headlines = fetch_news(ticker)
     
     if not headlines:
-        return {
-            'sentiment': 0.0,
-            'count': 0,
-            'headlines': [f"No hay noticias recientes para {ticker}"],
-            'scores': [0.0]
+        result = {'sentiment': 0.0, 'count': 0, 'headlines': [f"No hay noticias recientes para {ticker}"], 'scores': [0.0]}
+    else:
+        sentiment_scores = []
+        for headline in headlines:
+            try:
+                sentiment_scores.append(polarity(headline))
+            except:
+                sentiment_scores.append(0.0)
+        
+        avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0.0
+        result = {
+            'sentiment': avg_sentiment,
+            'count': len(headlines),
+            'headlines': headlines[:10],
+            'scores': sentiment_scores[:10]
         }
     
-    sentiment_scores = []
-    for headline in headlines:
-        try:
-            score = polarity(headline)
-            sentiment_scores.append(score)
-        except Exception as e:
-            print(f"⚠️ Error procesando: {headline[:50]}... {e}")
-            sentiment_scores.append(0.0)
-    
-    avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0.0
-    
-    return {
-        'sentiment': avg_sentiment,
-        'count': len(headlines),
-        'headlines': headlines[:10],
-        'scores': sentiment_scores[:10]
-    }
+    _news_cache[ticker] = (result, datetime.now())
+    return result
 
 if __name__ == '__main__':
     import sys
     ticker = sys.argv[1] if len(sys.argv) > 1 else 'NVDA'
-    print(f"🔍 Buscando noticias para {ticker}...")
     result = process_news_for_ticker(ticker)
-    print(f"\n📰 Noticias para {ticker}: {result['count']}")
-    print(f"📊 Sentimiento promedio: {result['sentiment']:.3f}")
-    for i, (h, s) in enumerate(zip(result['headlines'], result['scores'])):
-        print(f"  {i+1}. {h[:100]}... (sentiment: {s:.3f})")
+    print(f"📰 {ticker}: {result['count']} noticias, sentimiento: {result['sentiment']:.3f}")
