@@ -588,18 +588,35 @@ def signals_live():
     results = []
     for ticker in ticker_list:
         if ticker in TICKERS:
-            data = calculate_ndi(ticker)
-            if data:
-                results.append(data)
+            try:
+                data = calculate_ndi(ticker)
+                if data:
+                    results.append(data)
+                else:
+                    # Si no hay datos, devolver un placeholder
+                    results.append({
+                        'ticker': ticker,
+                        'price': None,
+                        'current_price': None,
+                        'error': 'No data available',
+                        'ndi': None
+                    })
+            except Exception as e:
+                logger.error(f"Error en signals_live para {ticker}: {e}")
+                results.append({
+                    'ticker': ticker,
+                    'price': None,
+                    'current_price': None,
+                    'error': str(e),
+                    'ndi': None
+                })
     
     return jsonify({
         'success': True,
         'signals': results,
         'count': len(results),
         'timestamp': datetime.now().isoformat()
-    })
-
-@app.route('/api/tickers')
+    })@app.route('/api/tickers')
 def get_tickers():
     return jsonify({'tickers': TICKERS, 'count': len(TICKERS)})
 
