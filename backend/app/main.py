@@ -614,7 +614,10 @@ def signals_live():
         'signals': results,
         'count': len(results),
         'timestamp': datetime.now().isoformat()
-    })@app.route('/api/tickers')
+    })
+
+
+@app.route('/api/tickers')
 def get_tickers():
     return jsonify({'tickers': TICKERS, 'count': len(TICKERS)})
 
