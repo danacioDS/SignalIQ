@@ -52,6 +52,24 @@ FALLBACK_PRICES = {
     'AMZN': 185.60, 'TSLA': 406.55, 'JPM': 155.30, 'KO': 60.20
 }
 
+
+# ============================================================
+# NOMBRES COMERCIALES DE EMPRESAS
+# ============================================================
+COMPANY_NAMES = {
+    'AAPL': 'Apple Inc.',
+    'MSFT': 'Microsoft Corp.',
+    'NVDA': 'NVIDIA Corp.',
+    'GOOGL': 'Alphabet Inc.',
+    'META': 'Meta Platforms Inc.',
+    'AMD': 'Advanced Micro Devices',
+    'AMZN': 'Amazon.com Inc.',
+    'TSLA': 'Tesla Inc.',
+    'JPM': 'JPMorgan Chase & Co.',
+    'KO': 'The Coca-Cola Company',
+    'NOK': 'Nokia Oyj'
+}
+
 # ============================================================
 # CACHÉ
 # ============================================================
