@@ -44,7 +44,7 @@ CACHE_TTL = {
     'signals': 60,
 }
 
-TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMD', 'AMZN', 'TSLA', 'JPM', 'KO']
+TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMD', 'AMZN', 'TSLA', 'JPM', 'KO', 'NOK']
 
 FALLBACK_PRICES = {
     'AAPL': 316.22, 'MSFT': 380.20, 'NVDA': 850.10,

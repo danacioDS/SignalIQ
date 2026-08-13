@@ -3,6 +3,7 @@ import { getRegimeColor, getRegimeLabel, getRegimeIcon, REGIME_COLORS } from '..
 
 interface TickerData {
   ticker: string;
+  companyName?: string;
   price: number;
   sentiment: number;
   momentum: number;
@@ -122,7 +123,7 @@ export const MarketIntelligenceTable: React.FC<MarketIntelligenceTableProps> = (
                   isSelected ? 'bg-gray-700/50' : 'hover:bg-gray-800/50'
                 }`}
               >
-                <td className="py-3 px-3 font-semibold text-white">{ticker.ticker}</td>
+                <td className="py-3 px-3 font-semibold text-white">{ticker.companyName || ticker.ticker}</td>
                 <td className="py-3 px-3 text-right font-mono text-white">
                   ${ticker.price?.toFixed(2) || 'N/A'}
                 </td>
