@@ -820,7 +820,7 @@ def get_market_metrics():
     if cached is not None:
         return jsonify(cached)
     
-    tickers = ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL', 'META']
+    tickers = TICKERS
     results = []
     
     for ticker in tickers:
