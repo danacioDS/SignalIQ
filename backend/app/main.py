@@ -794,7 +794,7 @@ def get_mi_analysis():
         if not ticker:
             return jsonify({'error': 'Ticker is required'}), 400
         
-        from layers.llm_router import analyze_market_intelligence
+        from app.layers.llm_router import analyze_market_intelligence
         analysis = analyze_market_intelligence(
             ticker=ticker,
             sentiment=sentiment,
