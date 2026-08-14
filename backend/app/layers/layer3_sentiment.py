@@ -5,8 +5,8 @@ import re
 from collections import deque
 from datetime import date
 
-from layers.layer3_config import CONFIG
-from layers.lm_lexicon import POSITIVE as LM_POSITIVE, NEGATIVE as LM_NEGATIVE
+from app.layers.layer3_config import CONFIG
+from app.layers.lm_lexicon import POSITIVE as LM_POSITIVE, NEGATIVE as LM_NEGATIVE
 
 # Merge LM lexicon with original hardcoded words for backward compatibility.
 # Original words not in LM: surge, gain, rise, beat, up, positive (positive);

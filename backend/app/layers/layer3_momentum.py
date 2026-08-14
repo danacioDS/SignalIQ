@@ -4,7 +4,7 @@ import math
 from collections import deque
 from datetime import date
 
-from layers.layer3_config import CONFIG
+from app.layers.layer3_config import CONFIG
 
 
 class MomentumProcessor:
