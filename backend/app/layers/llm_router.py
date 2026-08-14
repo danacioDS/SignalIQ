@@ -201,67 +201,117 @@ llm_router = LLMRouter()
 # ============================================================
 # MARKET INTELLIGENCE ANALYSIS CON CACHÉ
 # ============================================================
-def analyze_market_intelligence(ticker: str, sentiment: float, momentum: float, ndi: float, regime: str, news: list) -> dict:
-    """Genera análisis de 5 líneas con caché de 10 minutos"""
-    # Generar clave de caché
-    cache_key = hashlib.md5(f"{ticker}_{ndi:.3f}_{sentiment:.3f}_{momentum:.3f}_{regime}_{len(news)}".encode()).hexdigest()
-    
-    # Verificar caché
+def analyze_market_intelligence(
+    ticker: str,
+    sentiment: float,
+    momentum: float,
+    ndi: float,
+    regime: str,
+    news: list
+) -> dict:
+    """Generate structured market intelligence using the existing LLM router."""
+
+    cache_key = hashlib.md5(
+        f"{ticker}_{ndi:.3f}_{sentiment:.3f}_{momentum:.3f}_{regime}_{len(news)}".encode()
+    ).hexdigest()
+
+    # Cache
     if cache_key in _llm_cache:
         data, timestamp = _llm_cache[cache_key]
         if (datetime.now() - timestamp).total_seconds() < _LLM_CACHE_TTL:
+            print(f"🧠 LLM cache HIT: {ticker}")
             return data
-    
-    # Construir prompt
-    news_text = "\n".join([f"- {n[:150]}..." for n in news[:3]]) if news else "- No recent news"
-    prompt = f"""Generate 5-line analysis for {ticker}:
-    Sentiment: {sentiment:.3f}
-    Momentum: {momentum:.3f}
-    NDI: {ndi:.3f}
-    Regime: {regime}
-    News: {news_text}
-    
-    5 lines: Sentiment, Momentum, NDI/Regime, Market Interpretation, Risk/Outlook."""
-    
-    # Usar el router existente
-    if llm_router.primary == "mock":
-        result = {
-            'sentiment': f"{'Positive' if sentiment > 0.05 else 'Negative' if sentiment < -0.05 else 'Neutral'} ({sentiment:.3f})",
-            'momentum': f"{'Strong' if momentum > 0.05 else 'Weak' if momentum < -0.05 else 'Stable'} ({momentum:.3f})",
-            'regime': f"{regime} (NDI: {ndi:.3f})",
-            'interpretation': f"{regime} regime with {'positive' if sentiment > 0.05 else 'negative' if sentiment < -0.05 else 'neutral'} sentiment.",
-            'risk_outlook': f"Key risk: divergence between sentiment and price."
-        }
-    else:
+
+    news_summary = (
+        "\n".join([f"- {n[:150]}..." for n in news[:3]])
+        if news
+        else "- No recent news"
+    )
+
+    prompt = f"""Respond with exactly 5 concise lines for market intelligence.
+
+Ticker: {ticker}
+Sentiment: {sentiment:.3f}
+Momentum: {momentum:.3f}
+NDI: {ndi:.3f}
+Regime: {regime}
+
+Recent news:
+{news_summary}
+
+Use exactly this format:
+Sentiment: <assessment>
+Momentum: <assessment>
+NDI/Regime: <assessment>
+Market Interpretation: <assessment>
+Risk/Outlook: <assessment>
+
+Do not add numbering or extra lines.
+"""
+
+    result_text = ""
+
+    # Use the existing router and its configured primary/fallback providers.
+    try:
+        print(f"🤖 Primary LLM: {llm_router.primary}")
+        result_text = llm_router._call_llm(llm_router.primary, prompt) or ""
+    except Exception as e:
+        print(f"⚠️ Primary LLM failed: {e}")
+
+    if not result_text:
         try:
-            response = llm_router._call_llm(llm_router.primary, prompt)
-            if response:
-                lines = [l.strip() for l in response.split('\n') if l.strip()]
-                result = {
-                    'sentiment': lines[0] if len(lines) > 0 else 'N/A',
-                    'momentum': lines[1] if len(lines) > 1 else 'N/A',
-                    'regime': lines[2] if len(lines) > 2 else 'N/A',
-                    'interpretation': lines[3] if len(lines) > 3 else 'N/A',
-                    'risk_outlook': lines[4] if len(lines) > 4 else 'N/A'
-                }
-            else:
-                result = {
-                    'sentiment': 'N/A',
-                    'momentum': 'N/A',
-                    'regime': 'N/A',
-                    'interpretation': 'N/A',
-                    'risk_outlook': 'N/A'
-                }
+            print(f"🔄 Fallback LLM: {llm_router.fallback}")
+            result_text = llm_router._call_llm(llm_router.fallback, prompt) or ""
         except Exception as e:
-            print(f"⚠️ LLM error: {e}")
-            result = {
-                'sentiment': 'N/A',
-                'momentum': 'N/A',
-                'regime': 'N/A',
-                'interpretation': 'N/A',
-                'risk_outlook': 'N/A'
-            }
-    
-    # Guardar en caché
+            print(f"⚠️ Fallback LLM failed: {e}")
+
+    # Deterministic fallback: API must still return valid intelligence
+    if not result_text:
+        sentiment_label = (
+            "Positive" if sentiment > 0.05
+            else "Negative" if sentiment < -0.05
+            else "Neutral"
+        )
+
+        momentum_label = (
+            "Strong" if momentum > 0.05
+            else "Weak" if momentum < -0.05
+            else "Stable"
+        )
+
+        result = {
+            "sentiment": f"{sentiment_label} ({sentiment:.3f})",
+            "momentum": f"{momentum_label} ({momentum:.3f})",
+            "regime": f"{regime} (NDI: {ndi:.3f})",
+            "interpretation": (
+                f"{regime} market regime with "
+                f"{sentiment_label.lower()} sentiment and "
+                f"{momentum_label.lower()} momentum."
+            ),
+            "risk_outlook": (
+                "Monitor divergence between sentiment, momentum "
+                "and price action."
+            )
+        }
+
+        _llm_cache[cache_key] = (result, datetime.now())
+        return result
+
+    # Convert the 5-line LLM response into the API's structured schema.
+    lines = [
+        line.strip()
+        for line in result_text.strip().splitlines()
+        if line.strip()
+    ]
+
+    result = {
+        "sentiment": lines[0] if len(lines) > 0 else f"Sentiment: {sentiment:.3f}",
+        "momentum": lines[1] if len(lines) > 1 else f"Momentum: {momentum:.3f}",
+        "regime": lines[2] if len(lines) > 2 else f"NDI/Regime: {regime} ({ndi:.3f})",
+        "interpretation": lines[3] if len(lines) > 3 else f"Market Interpretation: {regime} market",
+        "risk_outlook": lines[4] if len(lines) > 4 else "Risk/Outlook: moderate risk"
+    }
+
     _llm_cache[cache_key] = (result, datetime.now())
+
     return result
