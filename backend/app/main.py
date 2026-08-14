@@ -5,7 +5,9 @@ SignalIQ API - Optimizado con Caché y Mínimo Consumo de APIs
 """
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Ensure the backend root is importable when running app/main.py directly
+BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BACKEND_ROOT)
 import logging
 import time
 import random
