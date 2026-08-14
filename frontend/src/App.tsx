@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
+import MarketIntelligence from './pages/MarketIntelligence';
 import EconomicFoundation from './pages/EconomicFoundation';
 import Data from './pages/Data';
 import TechStack from './pages/TechStack';
@@ -11,6 +12,7 @@ const App: React.FC = () => {
 
   const navItems = [
     { path: '/', label: '📊 Dashboard' },
+    { path: '/intelligence', label: '🧠 Market Intelligence' },
     { path: '/economic', label: '📚 Economic Foundation' },
     { path: '/data', label: '📡 Data' },
     { path: '/tech', label: '⚙️ Tech Stack' },
@@ -23,7 +25,6 @@ const App: React.FC = () => {
       minHeight: '100vh',
       color: '#e2e8f0'
     }}>
-      {/* Barra de navegación - ANCHO COMPLETO */}
       <nav style={{ 
         padding: '16px 32px',
         borderBottom: '1px solid #334155',
@@ -61,10 +62,10 @@ const App: React.FC = () => {
         })}
       </nav>
 
-      {/* Contenido */}
       <div style={{ padding: '24px 32px', maxWidth: '1400px', margin: '0 auto' }}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/intelligence" element={<MarketIntelligence />} />
           <Route path="/economic" element={<EconomicFoundation />} />
           <Route path="/data" element={<Data />} />
           <Route path="/tech" element={<TechStack />} />
