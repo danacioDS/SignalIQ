@@ -19,12 +19,15 @@ export const TickerFocusStrip: React.FC<TickerFocusStripProps> = ({
     <div
       style={{
         display: 'flex',
-        gap: 8,
         flexWrap: 'wrap',
+        gap: '8px',
         justifyContent: 'center',
         padding: '8px 0 16px 0',
         borderBottom: '1px solid ' + C.cardBorder,
         marginBottom: 16,
+        width: '100%',
+        minHeight: '80px',
+        overflow: 'visible',
       }}
     >
       {tickers.map((ticker) => {
@@ -37,6 +40,7 @@ export const TickerFocusStrip: React.FC<TickerFocusStripProps> = ({
             key={ticker}
             onClick={() => onSelect(ticker)}
             style={{
+              flex: '0 0 auto',
               background: isSelected ? color : 'transparent',
               color: isSelected ? '#ffffff' : C.text,
               border: '2px solid ' + (isSelected ? color : C.cardBorder),
@@ -46,7 +50,8 @@ export const TickerFocusStrip: React.FC<TickerFocusStripProps> = ({
               fontWeight: isSelected ? 'bold' : 'normal',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
-              opacity: isSelected ? 1 : 0.6,
+              opacity: isSelected ? 1 : 0.7,
+              whiteSpace: 'nowrap',
             }}
           >
             {ticker}
