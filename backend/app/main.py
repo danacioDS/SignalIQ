@@ -261,32 +261,50 @@ def get_price(ticker):
         )
 
     # ========================================================
-    # 3. YAHOO FINANCE
+    # 3. YAHOO FINANCE - HTTP directo
     # ========================================================
     try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period="2d")
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+        params = {
+            "range": "1d",
+            "interval": "1d",
+        }
 
-        if not hist.empty and "Close" in hist.columns:
-            price = float(hist["Close"].iloc[-1])
+        response = requests.get(
+            url,
+            params=params,
+            timeout=10,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+        response.raise_for_status()
 
-            if np.isfinite(price) and price > 0:
-                set_cached(cache_key, price, 'price')
+        data = response.json()
 
-                logger.info(
-                    f"🔄 Yahoo Finance: "
-                    f"{ticker} = ${price:.2f}"
-                )
-
-                return price, "yahoo"
+        result = data.get("chart", {}).get("result", [])
+        if result and len(result) > 0:
+            quote = result[0].get("indicators", {}).get("quote", [])
+            if quote and len(quote) > 0:
+                closes = quote[0].get("close", [])
+                if closes:
+                    # Tomar el último precio válido
+                    for close in reversed(closes):
+                        if close is not None:
+                            price = float(close)
+                            if np.isfinite(price) and price > 0:
+                                set_cached(cache_key, price, 'price')
+                                logger.info(
+                                    f"🔄 Yahoo HTTP: "
+                                    f"{ticker} = ${price:.2f}"
+                                )
+                                return price, "yahoo"
 
         logger.warning(
-            f"⚠️ Yahoo Finance sin datos para {ticker}"
+            f"⚠️ Yahoo HTTP sin precio para {ticker}"
         )
 
     except Exception as e:
         logger.warning(
-            f"⚠️ Yahoo Finance falló para {ticker}: "
+            f"⚠️ Yahoo HTTP falló para {ticker}: "
             f"{type(e).__name__}: {e}"
         )
 
