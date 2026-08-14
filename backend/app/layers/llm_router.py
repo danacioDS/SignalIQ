@@ -28,7 +28,7 @@ class LLMRouter:
     
     def _initialize(self):
         """Initialize clients based on configuration"""
-        self.primary = os.getenv("PRIMARY_LLM", "mock")
+        self.primary = os.getenv("PRIMARY_LLM", "groq")
         self.fallback = os.getenv("FALLBACK_LLM", "mock")
         self._clients = {}
         
