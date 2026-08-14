@@ -383,22 +383,47 @@ def get_price_history(ticker, days=30):
         except Exception as e:
             logger.warning(f"Alpha Vantage histórico falló: {e}")
 
-    # 3. Yahoo Finance
+    # 3. Yahoo Finance - HTTP directo (fallback)
     try:
-        ticker_obj = yf.Ticker(ticker)
-        hist = ticker_obj.history(period=f'{days}d')
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+        params = {
+            "range": "1mo",
+            "interval": "1d",
+        }
 
-        if not hist.empty:
-            history = [float(row['Close']) for _, row in hist.iterrows()]
-            set_cached(cache_key, history, 'history')
-            logger.info(
-                f"📊 Yahoo Finance: historial real para {ticker} "
-                f"({len(history)} días)"
-            )
-            return history
+        response = requests.get(
+            url,
+            params=params,
+            timeout=15,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+        response.raise_for_status()
+
+        data = response.json()
+
+        result = data.get("chart", {}).get("result", [])
+        if result and len(result) > 0:
+            quote = result[0].get("indicators", {}).get("quote", [])
+            timestamp = result[0].get("timestamp", [])
+
+            if quote and len(quote) > 0 and timestamp:
+                closes = quote[0].get("close", [])
+                if closes and len(closes) == len(timestamp):
+                    history = [float(c) for c in closes if c is not None]
+                    history = history[-days:]
+
+                    if history:
+                        set_cached(cache_key, history, 'history')
+                        logger.info(
+                            f"📊 Yahoo HTTP: historial real para {ticker} "
+                            f"({len(history)} días)"
+                        )
+                        return history
+
+        logger.warning(f"⚠️ Yahoo HTTP sin historial válido para {ticker}")
 
     except Exception as e:
-        logger.warning(f"Yahoo Finance histórico falló: {e}")
+        logger.warning(f"⚠️ Yahoo HTTP histórico falló para {ticker}: {type(e).__name__}: {e}")
 
     # 4. Fallback simulado (con advertencia)
     current_price, _ = get_price(ticker)
