@@ -98,12 +98,12 @@ def set_cached(key, value, cache_type='ticker'):
 def get_price(ticker):
     """
     Obtiene el precio actual del ticker.
-
+    
     Prioridad:
     1. Caché
-    2. Twelve Data
-    3. Alpha Vantage
-    4. Yahoo Finance
+    2. Twelve Data (PRIMARY)
+    3. Alpha Vantage (SECONDARY)
+    4. Yahoo Finance (FALLBACK)
     5. Fallback estático (último recurso)
     """
     ticker = ticker.strip().upper()
@@ -117,55 +117,6 @@ def get_price(ticker):
         return cached, "cache"
 
     # ========================================================
-    # 3. YAHOO FINANCE - HTTP directo
-    # ========================================================
-    try:
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
-        params = {
-            "range": "1d",
-            "interval": "1d",
-        }
-
-        response = requests.get(
-            url,
-            params=params,
-            timeout=10,
-            headers={"User-Agent": "Mozilla/5.0"}
-        )
-        response.raise_for_status()
-
-        data = response.json()
-
-        result = data.get("chart", {}).get("result", [])
-        if result and len(result) > 0:
-            quote = result[0].get("indicators", {}).get("quote", [])
-            if quote and len(quote) > 0:
-                closes = quote[0].get("close", [])
-                if closes:
-                    # Tomar el último precio válido
-                    for close in reversed(closes):
-                        if close is not None:
-                            price = float(close)
-                            if np.isfinite(price) and price > 0:
-                                set_cached(cache_key, price, 'price')
-                                logger.info(
-                                    f"🔄 Yahoo HTTP: "
-                                    f"{ticker} = ${price:.2f}"
-                                )
-                                return price, "yahoo"
-
-        logger.warning(
-            f"⚠️ Yahoo HTTP sin precio para {ticker}"
-        )
-
-    except Exception as e:
-        logger.warning(
-            f"⚠️ Yahoo HTTP falló para {ticker}: "
-            f"{type(e).__name__}: {e}"
-        )
-
-
-
     # 1. TWELVE DATA - FUENTE PRIMARIA
     # ========================================================
     if TWELVE_DATA_API_KEY:
@@ -182,6 +133,7 @@ def get_price(ticker):
                 f"Twelve Data status={response.status_code} ticker={ticker}"
             )
 
+            # ✅ SIEMPRE verificar status_code == 200
             if response.status_code == 200:
                 data = response.json()
                 raw_price = data.get("price")
@@ -216,16 +168,19 @@ def get_price(ticker):
                     )
 
             else:
+                # ⚠️ CUALQUIER código que no sea 200 (incluyendo 429) = fallo
                 logger.warning(
-                    f"⚠️ Twelve Data HTTP {response.status_code}: "
+                    f"⚠️ Twelve Data HTTP {response.status_code} para {ticker}: "
                     f"{response.text[:200]}"
                 )
+                # ⭐ NO HACER RETURN - continuar a Alpha Vantage
 
         except Exception as e:
             logger.warning(
                 f"⚠️ Twelve Data falló para {ticker}: "
                 f"{type(e).__name__}: {e}"
             )
+            # ⭐ NO HACER RETURN - continuar a Alpha Vantage
     else:
         logger.warning("⚠️ TWELVE_DATA_API_KEY no configurada")
 
@@ -244,23 +199,25 @@ def get_price(ticker):
             response = requests.get(url, params=params, timeout=5)
 
             logger.info(
-                f"Alpha Vantage status={response.status_code} "
-                f"ticker={ticker}"
+                f"Alpha Vantage status={response.status_code} ticker={ticker}"
             )
 
             if response.status_code == 200:
                 data = response.json()
 
+                # ✅ Detectar rate limit de Alpha Vantage
                 if "Note" in data:
                     logger.warning(
-                        f"⚠️ Alpha Vantage rate limit para {ticker}"
+                        f"⚠️ Alpha Vantage rate limit para {ticker}: {data['Note'][:150]}"
                     )
+                    # ⭐ NO HACER RETURN - continuar a Yahoo
 
                 elif "Information" in data:
                     logger.warning(
                         f"⚠️ Alpha Vantage no disponible para {ticker}: "
                         f"{data['Information'][:150]}"
                     )
+                    # ⭐ NO HACER RETURN - continuar a Yahoo
 
                 elif (
                     "Global Quote" in data
@@ -275,28 +232,24 @@ def get_price(ticker):
                             set_cached(cache_key, price, 'price')
 
                             logger.info(
-                                f"🔄 Alpha Vantage: "
-                                f"{ticker} = ${price:.2f}"
+                                f"🔄 Alpha Vantage: {ticker} = ${price:.2f}"
                             )
 
                             return price, "alpha_vantage"
 
                     except (TypeError, ValueError):
                         logger.warning(
-                            f"⚠️ Alpha Vantage precio inválido "
-                            f"para {ticker}"
+                            f"⚠️ Alpha Vantage precio inválido para {ticker}"
                         )
 
                 else:
                     logger.warning(
-                        f"⚠️ Alpha Vantage sin precio para {ticker}: "
-                        f"{data}"
+                        f"⚠️ Alpha Vantage sin precio para {ticker}: {data}"
                     )
 
             else:
                 logger.warning(
-                    f"⚠️ Alpha Vantage HTTP "
-                    f"{response.status_code}"
+                    f"⚠️ Alpha Vantage HTTP {response.status_code} para {ticker}"
                 )
 
         except Exception as e:
@@ -305,16 +258,65 @@ def get_price(ticker):
                 f"{type(e).__name__}: {e}"
             )
     else:
-        logger.warning(
-            "⚠️ ALPHA_VANTAGE_API_KEY no configurada"
-        )
+        logger.warning("⚠️ ALPHA_VANTAGE_API_KEY no configurada")
 
     # ========================================================
+    # 3. YAHOO FINANCE - HTTP DIRECTO (FALLBACK)
+    # ========================================================
+    try:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+        params = {
+            "range": "1d",
+            "interval": "1d",
+        }
+
+        response = requests.get(
+            url,
+            params=params,
+            timeout=10,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+        
+        logger.info(f"Yahoo HTTP status={response.status_code} ticker={ticker}")
+
+        if response.status_code == 200:
+            data = response.json()
+
+            result = data.get("chart", {}).get("result", [])
+            if result and len(result) > 0:
+                quote = result[0].get("indicators", {}).get("quote", [])
+                if quote and len(quote) > 0:
+                    closes = quote[0].get("close", [])
+                    if closes:
+                        # Tomar el último precio válido
+                        for close in reversed(closes):
+                            if close is not None:
+                                price = float(close)
+                                if np.isfinite(price) and price > 0:
+                                    set_cached(cache_key, price, 'price')
+                                    logger.info(
+                                        f"🔄 Yahoo HTTP: {ticker} = ${price:.2f}"
+                                    )
+                                    return price, "yahoo"
+
+            logger.warning(
+                f"⚠️ Yahoo HTTP sin precio válido para {ticker}"
+            )
+        else:
+            logger.warning(
+                f"⚠️ Yahoo HTTP {response.status_code} para {ticker}"
+            )
+
+    except Exception as e:
+        logger.warning(
+            f"⚠️ Yahoo HTTP falló para {ticker}: "
+            f"{type(e).__name__}: {e}"
+        )
+
     # ========================================================
     # 4. FALLBACK - ÚLTIMO RECURSO
     # ========================================================
     price = FALLBACK_PRICES.get(ticker, 100.0)
-
     set_cached(cache_key, price, 'price')
 
     logger.warning(
@@ -322,7 +324,6 @@ def get_price(ticker):
     )
 
     return price, "fallback"
-
 
 def get_price_history(ticker, days=30):
     """
