@@ -11,10 +11,6 @@ services:
       cd backend
       python -m app.main
     envVars:
-      - key: TWELVE_DATA_API_KEY
-        value: f00edbcc6c8e4b9b84d2d260be63c51f
-      - key: ALPHA_VANTAGE_API_KEY
-        value: OHKJN60EB6YJYO5L
       - key: LOG_FORMAT
         value: text
       - key: PYTHON_VERSION
