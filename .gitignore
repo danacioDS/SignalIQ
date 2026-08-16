@@ -63,3 +63,4 @@ __pycache__/
 *.env
 *.bak
 *.backup*
+.envrc
