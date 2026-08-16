@@ -3,10 +3,10 @@
 from collections import defaultdict
 from datetime import date, datetime
 
-from layers.layer3_config import CONFIG
-from layers.layer3_entity import EntityResolver, normalize_headline
-from layers.layer3_momentum import MomentumProcessor
-from layers.layer3_sentiment import SentimentProcessor
+from app.layers.layer3_config import CONFIG
+from app.layers.layer3_entity import EntityResolver, normalize_headline
+from app.layers.layer3_momentum import MomentumProcessor
+from app.layers.layer3_sentiment import SentimentProcessor
 
 
 HEADLINE_REQUIRED_KEYS = {"headline_text", "published_at", "ingested_at", "url_param"}

@@ -1,0 +1,11 @@
+{
+  "remoteName": "origin",
+  "projects": [
+    {
+      "id": "prj_1i8w6x0ZvNB5uRo5b3AWQnrxQtWR",
+      "name": "signaliq",
+      "directory": ".",
+      "orgId": "team_zVhOHBEdwm4Dd7QXYR9qWBtR"
+    }
+  ]
+}

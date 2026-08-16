@@ -82,7 +82,7 @@ const MarketIntelligence: React.FC = () => {
       if (result.tickers && result.tickers.length > 0) {
         const top5 = [...result.tickers]
           .sort((a, b) => b.sentiment - a.sentiment)
-          .slice(0, 5);
+          
         if (top5.length > 0) {
           setSelectedTicker(top5[0].ticker);
         }
@@ -151,7 +151,7 @@ const MarketIntelligence: React.FC = () => {
 
   const top5Tickers = [...tickers]
     .sort((a, b) => b.sentiment - a.sentiment)
-    .slice(0, 5);
+    
 
   const selectedNews = selectedTicker ? newsData[selectedTicker] : null;
   const selectedData = tickers.find((t) => t.ticker === selectedTicker);
@@ -173,7 +173,7 @@ const MarketIntelligence: React.FC = () => {
 
       <div className="bg-gray-800 rounded-lg p-4 mb-6">
         <h3 className="text-white text-lg font-semibold mb-4">
-          📊 Ticker Intelligence (Top 5 by Sentiment)
+          📊 Ticker Intelligence (All Tickers (by Sentiment))
         </h3>
         <MarketIntelligenceTable
           tickers={top5Tickers}

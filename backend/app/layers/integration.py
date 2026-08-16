@@ -8,7 +8,7 @@ Provides a single entry point that wires together:
 
 from typing import Optional
 
-from layers.layer4_orchestrator import Layer4Orchestrator
+from app.layers.layer4_orchestrator import Layer4Orchestrator
 
 
 def run_pipeline(

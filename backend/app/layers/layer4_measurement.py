@@ -1,6 +1,6 @@
 """Sublayer 4A: Measurement — validity gate, NDI, and 5-day return."""
 
-from config.thresholds import MIN_PRICE_HISTORY_DAYS
+from app.config.thresholds import MIN_PRICE_HISTORY_DAYS
 
 VALIDITY_STATE = ["VALID", "INVALID_INPUT", "INSUFFICIENT_PRICE_HISTORY"]
 
