@@ -35,6 +35,10 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 def calculate_ndi(closes):
+    # Convertir a float si son strings
+    closes = [float(c) if isinstance(c, (str, int, float)) else 0.0 for c in closes]
+    # Convertir a float si son strings
+    closes = [float(c) if isinstance(c, (str, int, float)) else 0.0 for c in closes]
     if len(closes) < 2:
         return 0.0, 0.0, 0.0
     
